@@ -1,23 +1,31 @@
 use cms::cert::x509::certificate::CertificateInner;
 use cms::signed_data::{EncapsulatedContentInfo, SignedAttributes, SignerInfo};
 use cms::{content_info::ContentInfo, signed_data::SignedData};
-use color_eyre::eyre::{bail, Context, ContextCompat, Error, Result};
-use const_oid::db::rfc5912::{ID_SHA_512, SECP_521_R_1};
+use color_eyre::eyre::{bail, eyre, Context, ContextCompat, Error, Result};
+use const_oid::db::rfc5912::{
+    ID_SHA_224, ID_SHA_256, ID_SHA_384, ID_SHA_512, SECP_224_R_1, SECP_256_R_1, SECP_384_R_1,
+    SECP_521_R_1,
+};
 use const_oid::ObjectIdentifier;
 use der::asn1::OctetString;
 use der::{AnyRef, Decode, Encode, SliceReader};
 use digest::Digest;
-use ecdsa::{signature::hazmat::PrehashVerifier, Signature, VerifyingKey};
-use elliptic_curve::sec1::EncodedPoint;
+use ecdsa::signature::hazmat::PrehashVerifier;
+use ecdsa::{Signature, VerifyingKey};
+use k256::Secp256k1;
+use p224::NistP224;
+use p256::NistP256;
+use p384::NistP384;
 use p521::NistP521;
 use serde::{Deserialize, Serialize};
 use serde_with::base64::Base64;
 use serde_with::serde_as;
-use sha2::Sha512; // Add these imports
+use sha2::{Sha224, Sha256, Sha384, Sha512};
 
 use crate::dg1::Dg1Td3;
 
 const OID_MRTD_SIGNATURE_DATA: ObjectIdentifier = ObjectIdentifier::new_unwrap("2.23.136.1.1.1");
+const SECP_256_K_1: ObjectIdentifier = ObjectIdentifier::new_unwrap("1.3.132.0.10");
 
 #[serde_as]
 #[derive(Debug, Deserialize)]
@@ -103,29 +111,56 @@ pub struct PassportVerificationInput<'a> {
     pub verifying_key: &'a [u8],
     pub signature: &'a [u8],
 }
+
 impl<'a> PassportVerificationInput<'a> {
     pub fn verify(&self) -> Result<()> {
-        if self.algo_digest != ID_SHA_512 {
-            bail!("Unexpected digest algorithm");
+        let digest = match self.algo_digest {
+            ID_SHA_256 => Sha256::digest(&self.signed_attrs).to_vec(),
+            ID_SHA_384 => Sha384::digest(&self.signed_attrs).to_vec(),
+            ID_SHA_512 => Sha512::digest(&self.signed_attrs).to_vec(),
+            ID_SHA_224 => Sha224::digest(&self.signed_attrs).to_vec(),
+            _ => bail!("Unsupported digest algorithm"),
+        };
+
+        match self.algo_signature {
+            SECP_224_R_1 => {
+                let key = VerifyingKey::<NistP224>::try_from(self.verifying_key)
+                    .map_err(|_| eyre!("Invalid P224 public key"))?;
+                let sig = Signature::<NistP224>::from_der(self.signature)
+                    .wrap_err("parsing der signature")?;
+                key.verify_prehash(&digest, &sig)
+            }
+            SECP_256_R_1 => {
+                let key = VerifyingKey::<NistP256>::try_from(self.verifying_key)
+                    .map_err(|_| eyre!("Invalid P256 public key"))?;
+                let sig = Signature::<NistP256>::from_der(self.signature)
+                    .wrap_err("parsing der signature")?;
+                key.verify_prehash(&digest, &sig)
+            }
+            SECP_384_R_1 => {
+                let key = VerifyingKey::<NistP384>::try_from(self.verifying_key)
+                    .map_err(|_| eyre!("Invalid P384 public key"))?;
+                let sig = Signature::<NistP384>::from_der(self.signature)
+                    .wrap_err("parsing der signature")?;
+                key.verify_prehash(&digest, &sig)
+            }
+            SECP_521_R_1 => {
+                let key = VerifyingKey::<NistP521>::try_from(self.verifying_key)
+                    .map_err(|_| eyre!("Invalid P521 public key"))?;
+                let sig = Signature::<NistP521>::from_der(self.signature)
+                    .wrap_err("parsing der signature")?;
+                key.verify_prehash(&digest, &sig)
+            }
+            SECP_256_K_1 => {
+                let key = VerifyingKey::<Secp256k1>::try_from(self.verifying_key)
+                    .map_err(|_| eyre!("Invalid Secp256k1 public key"))?;
+                let sig = Signature::<Secp256k1>::from_der(self.signature)
+                    .wrap_err("parsing der signature")?;
+                key.verify_prehash(&digest, &sig)
+            }
+            _ => bail!("Unsupported signature algorithm"),
         }
-        if self.algo_signature != SECP_521_R_1 {
-            bail!("Unexpected signature algorithm");
-        }
-
-        // public key parsing
-        let encoded_point = EncodedPoint::<NistP521>::from_bytes(self.verifying_key)?;
-
-        // Create VerifyingKey instead of PublicKey
-        let verifying_key: VerifyingKey<NistP521> =
-            VerifyingKey::from_encoded_point(&encoded_point).expect("Invalid public key encoding");
-
-        let signature = Signature::<NistP521>::from_der(self.signature)?;
-
-        let payload = Sha512::digest(&self.signed_attrs);
-
-        verifying_key
-            .verify_prehash(&payload, &signature)
-            .wrap_err("passport verification failed")
+        .wrap_err("Signature verification failed")
     }
 }
 

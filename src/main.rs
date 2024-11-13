@@ -33,7 +33,7 @@ enum Commands {
     },
 }
 
-fn handle_scan(scan_file: &PathBuf) -> Result<()> {
+pub fn handle_scan(scan_file: &PathBuf) -> Result<()> {
     let f = File::open(scan_file).wrap_err("opening passport scan")?;
     let reader = BufReader::new(f);
     let scan: PassportScan =
@@ -49,7 +49,7 @@ fn handle_scan(scan_file: &PathBuf) -> Result<()> {
     Ok(())
 }
 
-fn handle_mock(mrz: Option<&str>) -> Result<()> {
+pub fn handle_mock(mrz: Option<&str>) -> Result<()> {
     let provable = mock_passport_provable::<Sha256>(mrz)?;
 
     let json = serde_json::to_string_pretty(&provable)
@@ -60,7 +60,8 @@ fn handle_mock(mrz: Option<&str>) -> Result<()> {
     Ok(())
 }
 
-fn main() -> Result<()> {
+pub fn main2() -> Result<()> {
+    color_eyre::install()?;
     let cli = Cli::parse();
 
     match &cli.command {
@@ -75,7 +76,8 @@ fn main() -> Result<()> {
     Ok(())
 }
 
-pub fn main2() -> Result<()> {
+pub fn main() -> Result<()> {
+    color_eyre::install()?;
     let f = File::open("./passportScan.json").wrap_err("opening passport scan")?;
     let reader = BufReader::new(f);
     let scan: PassportScan =
