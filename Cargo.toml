@@ -11,6 +11,9 @@ color-eyre = "0.6.3"
 const-oid = { version = "0.9.6", features = ["std"] }
 der = { version = "0.7.9", features = ["std", "pem", "derive", "oid"] }
 digest = { version = "0.10.7", features = ["std", "oid"] }
+ecdsa = { version = "0.16.9", features = ["std"] }
+elliptic-curve = { version = "0.13.8", features = ["sec1", "std"] }
+p521 = "0.13.3"
 serde = { version = "1.0.215", features = ["derive"] }
 serde_json = "1.0.132"
 serde_with = { version = "3.11.0", features = ["json", "base64"] }

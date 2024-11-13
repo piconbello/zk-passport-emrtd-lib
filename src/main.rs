@@ -5,7 +5,10 @@ use std::path::PathBuf;
 use std::{fs::File, io::BufReader};
 use zk_passport_emrtd_lib::mock::mock_passport_provable;
 
-use zk_passport_emrtd_lib::parse_scan::{PassportProvable, PassportScan};
+use zk_passport_emrtd_lib::parse_scan::{
+    extract_certificate, extract_passport_verification_input, extract_signer_info, parse_sod,
+    PassportProvable, PassportScan,
+};
 
 #[derive(Parser)]
 #[command(version, about, long_about = None)]
@@ -68,6 +71,22 @@ fn main() -> Result<()> {
             handle_mock(mrz.as_deref())?;
         }
     }
+
+    Ok(())
+}
+
+pub fn main2() -> Result<()> {
+    let f = File::open("./passportScan.json").wrap_err("opening passport scan")?;
+    let reader = BufReader::new(f);
+    let scan: PassportScan =
+        serde_json::from_reader(reader).wrap_err("parsing passport scan json")?;
+
+    let sod = parse_sod(&scan.sod)?;
+
+    let signer_info = extract_signer_info(&sod)?;
+    let cert = extract_certificate(&sod)?;
+    let verification_input = extract_passport_verification_input(signer_info, cert)?;
+    verification_input.verify()?;
 
     Ok(())
 }
