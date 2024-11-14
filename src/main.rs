@@ -1,13 +1,14 @@
 use clap::{Parser, Subcommand};
-use color_eyre::eyre::{Context, Result};
+use color_eyre::eyre::{Context, ContextCompat, Result};
+use const_oid::db::DB;
 use sha2::Sha256;
 use std::path::PathBuf;
 use std::{fs::File, io::BufReader};
+use zk_passport_emrtd_lib::cert_local::extract_passport_verification_input;
 use zk_passport_emrtd_lib::mock::mock_passport_provable;
 
 use zk_passport_emrtd_lib::parse_scan::{
-    extract_certificate, extract_passport_verification_input, extract_signer_info, parse_sod,
-    PassportProvable, PassportScan,
+    extract_certificate, extract_signer_info, parse_sod, PassportProvable, PassportScan,
 };
 
 #[derive(Parser)]
@@ -60,7 +61,7 @@ pub fn handle_mock(mrz: Option<&str>) -> Result<()> {
     Ok(())
 }
 
-pub fn main2() -> Result<()> {
+pub fn main() -> Result<()> {
     color_eyre::install()?;
     let cli = Cli::parse();
 
@@ -76,7 +77,7 @@ pub fn main2() -> Result<()> {
     Ok(())
 }
 
-pub fn main() -> Result<()> {
+pub fn main2() -> Result<()> {
     color_eyre::install()?;
     let f = File::open("./passportScan.json").wrap_err("opening passport scan")?;
     let reader = BufReader::new(f);
@@ -87,8 +88,16 @@ pub fn main() -> Result<()> {
 
     let signer_info = extract_signer_info(&sod)?;
     let cert = extract_certificate(&sod)?;
+
     let verification_input = extract_passport_verification_input(signer_info, cert)?;
+    // *verification_input.signed_attrs.last_mut().unwrap() -= 1;
     verification_input.verify()?;
+    let pubkey = verification_input.curve_ops.public_key_coords();
+    let signature = verification_input.curve_ops.signature_components();
+    println!("{}", serde_json::to_string_pretty(&pubkey).unwrap());
+    println!("{}", serde_json::to_string_pretty(&signature).unwrap());
+    println!("hash algo {}", verification_input.hasher.algo_name());
+    println!("sign algo {}", verification_input.curve_ops.algo_name());
 
     Ok(())
 }

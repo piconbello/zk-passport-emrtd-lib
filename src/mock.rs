@@ -84,5 +84,7 @@ pub fn mock_passport_provable<H: Digest + OutputSizeUser + AssociatedOid>(
         dg1,
         lds,
         signed_attrs,
+        digest_algo: todo!(),
+        certificate_local: todo!(),
     })
 }
