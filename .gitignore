@@ -1,2 +1,6 @@
 /target
 **/*.json
+**/*.pem
+**/*.ldif
+**/*.der
+**/*.ts

@@ -3,9 +3,11 @@ use color_eyre::eyre::{Context, ContextCompat, Result};
 use const_oid::db::DB;
 use sha2::Sha256;
 use std::path::PathBuf;
+use std::str::FromStr;
 use std::{fs::File, io::BufReader};
 use zk_passport_emrtd_lib::cert_local::extract_passport_verification_input;
 use zk_passport_emrtd_lib::mock::mock_passport_provable;
+use zk_passport_emrtd_lib::parse_ldif::certificates_from_ldif;
 
 use zk_passport_emrtd_lib::parse_scan::{
     extract_certificate, extract_signer_info, parse_sod, PassportProvable, PassportScan,
@@ -61,7 +63,7 @@ pub fn handle_mock(mrz: Option<&str>) -> Result<()> {
     Ok(())
 }
 
-pub fn main() -> Result<()> {
+pub fn main1() -> Result<()> {
     color_eyre::install()?;
     let cli = Cli::parse();
 
@@ -99,5 +101,55 @@ pub fn main2() -> Result<()> {
     println!("hash algo {}", verification_input.hasher.algo_name());
     println!("sign algo {}", verification_input.curve_ops.algo_name());
 
+    Ok(())
+}
+
+fn main3() -> Result<(), Box<dyn std::error::Error>> {
+    use cms::cert::x509::Certificate;
+    use color_eyre::eyre::eyre;
+    use der::Decode;
+    use std::fs;
+
+    // Read the PEM file
+    let pem_content = fs::read_to_string("icaopkd-002-complete-000284.pem")?;
+
+    let pems = pem::parse_many(pem_content.as_bytes())?;
+
+    let certs: Result<Vec<Certificate>> = pems
+        .into_iter()
+        .map(|p| match p.tag() {
+            "CERTIFICATE" => Certificate::from_der(p.contents()).wrap_err("certificate from der"),
+            tag => Err(eyre!("unaccepted tag {}", tag)),
+        })
+        .collect();
+
+    let certs = certs?;
+
+    certs.iter().for_each(|c| {
+        let tbs = &c.tbs_certificate;
+
+        println!("Subject: {:?}", tbs.subject);
+        println!("Issuer: {:?}", tbs.issuer);
+        println!("Validity:");
+        println!("  Not Before: {:?}", tbs.validity.not_before);
+        println!("  Not After: {:?}", tbs.validity.not_after);
+        println!("Serial Number: {:?}", tbs.serial_number);
+
+        // Print extensions if present
+        if let Some(extensions) = &tbs.extensions {
+            println!("Extensions:");
+            for ext in extensions.iter() {
+                println!("  ID: {:?}", ext.extn_id);
+            }
+        }
+
+        println!("----------------------------------------");
+    });
+
+    Ok(())
+}
+
+fn main() -> Result<()> {
+    certificates_from_ldif(&PathBuf::from_str("icaopkd-002-complete-000284.ldif")?)?;
     Ok(())
 }
