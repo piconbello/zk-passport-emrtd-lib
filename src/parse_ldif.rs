@@ -8,6 +8,10 @@ use color_eyre::eyre::{bail, Context, ContextCompat};
 use color_eyre::Result;
 use der::asn1::SetOfVec;
 use der::{Decode, Encode, Sequence};
+use digest::Digest;
+use sha2::{Sha256, Sha512};
+use std::cmp::Ordering;
+use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::path::PathBuf;
 
@@ -117,6 +121,47 @@ fn extract_certificates_from_cert_der(cert_der: &[u8]) -> Result<Vec<Certificate
     Ok(master_list.certificates.into_vec())
 }
 
+#[derive(Eq, PartialEq)]
+struct CertificateWithHash {
+    hash: Vec<u8>,
+    cert: Certificate,
+}
+
+impl From<Certificate> for CertificateWithHash {
+    fn from(cert: Certificate) -> Self {
+        let hash = Sha512::digest(
+            cert.tbs_certificate
+                .to_der()
+                .expect("we deserialized it should not fail"),
+        )
+        .to_vec();
+
+        CertificateWithHash { hash, cert }
+    }
+}
+
+impl Ord for CertificateWithHash {
+    fn cmp(&self, other: &Self) -> Ordering {
+        self.hash.cmp(&other.hash)
+    }
+}
+
+impl PartialOrd for CertificateWithHash {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+pub fn deduplicate_certificates(certs: Vec<Certificate>) -> Vec<Certificate> {
+    certs
+        .into_iter()
+        .map(CertificateWithHash::from)
+        .collect::<BTreeSet<_>>()
+        .into_iter()
+        .map(|wrapped| wrapped.cert)
+        .collect()
+}
+
 /// Main function to process LDIF file and extract certificates
 pub fn certificates_from_ldif(ldif_path: &PathBuf) -> Result<Vec<Certificate>> {
     if ldif_path.extension() != Some(&OsStr::from(FILE_EXTENSION)) {
@@ -127,12 +172,25 @@ pub fn certificates_from_ldif(ldif_path: &PathBuf) -> Result<Vec<Certificate>> {
 
     let cert_ders = extract_master_certs_der_from_ldif(&content);
 
-    println!("{}", cert_ders.len());
+    println!("Number of CMS structures: {}", cert_ders.len());
 
+    let mut all_certs = Vec::new();
     for cert_der in &cert_ders {
         let certs = extract_certificates_from_cert_der(cert_der)?;
-        println!("success {}", certs.len())
+        println!("CMS had {} certificates", certs.len());
+        all_certs.extend(certs);
     }
 
-    Ok(vec![])
+    println!(
+        "Total certificates before deduplication: {}",
+        all_certs.len()
+    );
+
+    let deduplicated_certs = deduplicate_certificates(all_certs);
+    println!(
+        "Total unique certificates after deduplication: {}",
+        deduplicated_certs.len()
+    );
+
+    Ok(deduplicated_certs)
 }
