@@ -1,17 +1,20 @@
 use base64::prelude::BASE64_STANDARD;
 use base64::Engine;
 use clap::builder::OsStr;
+use cms::cert::x509::ext::pkix::SubjectKeyIdentifier;
 use cms::cert::x509::Certificate;
 use cms::content_info::ContentInfo;
 use cms::signed_data::SignedData;
 use color_eyre::eyre::{bail, Context, ContextCompat};
 use color_eyre::Result;
+use const_oid::db::rfc5280::ID_CE_SUBJECT_KEY_IDENTIFIER;
 use der::asn1::SetOfVec;
 use der::{Decode, Encode, Sequence};
 use digest::Digest;
-use sha2::{Sha256, Sha512};
+use sha2::Sha512;
+use smallvec::SmallVec;
 use std::cmp::Ordering;
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeSet;
 use std::fs;
 use std::path::PathBuf;
 
@@ -25,9 +28,9 @@ fn extract_master_certs_der_from_ldif(content_ldif: &str) -> Vec<Vec<u8>> {
     let mut is_collecting = false;
 
     for line in content_ldif.lines() {
-        if line.starts_with(LDIF_CERT_PREFIX) {
+        if let Some(stripped) = line.strip_prefix(LDIF_CERT_PREFIX) {
             is_collecting = true;
-            current_cert = line[LDIF_CERT_PREFIX.len()..].to_string();
+            current_cert = stripped.to_string();
             continue;
         }
 
@@ -89,7 +92,7 @@ fn extract_signed_data_from_cert_ber(cert_ber: &[u8]) -> Result<SignedData> {
     signed_data_der.extend_from_slice(&[0x30, 0x82]); // SEQUENCE tag and length
     let content_len = inner_data.len();
     signed_data_der.extend_from_slice(&[(content_len >> 8) as u8, content_len as u8]); // Add length bytes
-    signed_data_der.extend_from_slice(&inner_data); // Add content
+    signed_data_der.extend_from_slice(inner_data); // Add content
     let signed_data = SignedData::from_der(&signed_data_der).wrap_err("signed data")?;
     Ok(signed_data)
 }
@@ -172,25 +175,39 @@ pub fn certificates_from_ldif(ldif_path: &PathBuf) -> Result<Vec<Certificate>> {
 
     let cert_ders = extract_master_certs_der_from_ldif(&content);
 
-    println!("Number of CMS structures: {}", cert_ders.len());
-
     let mut all_certs = Vec::new();
     for cert_der in &cert_ders {
         let certs = extract_certificates_from_cert_der(cert_der)?;
-        println!("CMS had {} certificates", certs.len());
         all_certs.extend(certs);
     }
 
-    println!(
-        "Total certificates before deduplication: {}",
-        all_certs.len()
-    );
-
     let deduplicated_certs = deduplicate_certificates(all_certs);
-    println!(
-        "Total unique certificates after deduplication: {}",
-        deduplicated_certs.len()
-    );
 
     Ok(deduplicated_certs)
+}
+
+pub fn extract_subject_identifier_key(master_cert: &Certificate) -> Result<SmallVec<[u8; 20]>> {
+    let exts = master_cert
+        .tbs_certificate
+        .extensions
+        .as_ref()
+        .wrap_err("need extensions in cert")?;
+
+    let ext = exts
+        .iter()
+        .find(|ext| ext.extn_id == ID_CE_SUBJECT_KEY_IDENTIFIER)
+        .wrap_err("need subject key extension")?;
+
+    let ki: SmallVec<[u8; 20]> = match SubjectKeyIdentifier::from_der(ext.extn_value.as_bytes()) {
+        Ok(ski) => {
+            let ki = ski.0.as_bytes();
+            ki.into()
+        }
+        Err(_) => {
+            let ki = ext.extn_value.as_bytes();
+            ki.into()
+        }
+    };
+
+    Ok(ki)
 }

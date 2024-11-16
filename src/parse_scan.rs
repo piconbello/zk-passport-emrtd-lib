@@ -11,7 +11,7 @@ use serde_with::base64::Base64;
 use serde_with::serde_as;
 
 use crate::cert_local::{
-    extract_passport_verification_input, PublicKeyCoords, SignatureComponents,
+    extract_cert_local_verification_input, PublicKeyCoords, SignatureComponents,
 };
 use crate::dg1::Dg1Td3;
 
@@ -140,7 +140,7 @@ impl TryFrom<&PassportScan> for PassportProvable {
         let certificate = extract_certificate(&sod)?;
 
         let passport_verification_input =
-            extract_passport_verification_input(signer_info, certificate)?;
+            extract_cert_local_verification_input(signer_info, certificate)?;
 
         let cert_local = CertificateLocalProvable {
             digest_algorithm: passport_verification_input.hasher.algo_name().into(),

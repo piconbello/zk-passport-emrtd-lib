@@ -1,11 +1,12 @@
 use clap::{Parser, Subcommand};
-use color_eyre::eyre::{Context, ContextCompat, Result};
-use const_oid::db::DB;
+use color_eyre::eyre::{Context, Result};
 use sha2::Sha256;
 use std::path::PathBuf;
 use std::str::FromStr;
 use std::{fs::File, io::BufReader};
-use zk_passport_emrtd_lib::cert_local::extract_passport_verification_input;
+use zk_passport_emrtd_lib::cert_local::{
+    extract_cert_local_verification_input, extract_cert_master_verification_input,
+};
 use zk_passport_emrtd_lib::mock::mock_passport_provable;
 use zk_passport_emrtd_lib::parse_ldif::certificates_from_ldif;
 
@@ -79,9 +80,9 @@ pub fn main1() -> Result<()> {
     Ok(())
 }
 
-pub fn main2() -> Result<()> {
+pub fn main() -> Result<()> {
     color_eyre::install()?;
-    let f = File::open("./passportScan.json").wrap_err("opening passport scan")?;
+    let f = File::open("./passportScan.egemen.json").wrap_err("opening passport scan")?;
     let reader = BufReader::new(f);
     let scan: PassportScan =
         serde_json::from_reader(reader).wrap_err("parsing passport scan json")?;
@@ -91,7 +92,7 @@ pub fn main2() -> Result<()> {
     let signer_info = extract_signer_info(&sod)?;
     let cert = extract_certificate(&sod)?;
 
-    let verification_input = extract_passport_verification_input(signer_info, cert)?;
+    let verification_input = extract_cert_local_verification_input(signer_info, cert)?;
     // *verification_input.signed_attrs.last_mut().unwrap() -= 1;
     verification_input.verify()?;
     let pubkey = verification_input.curve_ops.public_key_coords();
@@ -101,10 +102,33 @@ pub fn main2() -> Result<()> {
     println!("hash algo {}", verification_input.hasher.algo_name());
     println!("sign algo {}", verification_input.curve_ops.algo_name());
 
+    let master_certs =
+        certificates_from_ldif(&PathBuf::from_str("icaopkd-002-complete-000284.ldif")?)?;
+
+    println!("\nNOW master cert:");
+
+    let verification_input_master_cert =
+        extract_cert_master_verification_input(cert, &master_certs)?;
+    verification_input_master_cert.verify()?;
+    let pubkey = verification_input_master_cert.curve_ops.public_key_coords();
+    let signature = verification_input_master_cert
+        .curve_ops
+        .signature_components();
+    println!("{}", serde_json::to_string_pretty(&pubkey).unwrap());
+    println!("{}", serde_json::to_string_pretty(&signature).unwrap());
+    println!(
+        "hash algo {}",
+        verification_input_master_cert.hasher.algo_name()
+    );
+    println!(
+        "sign algo {}",
+        verification_input_master_cert.curve_ops.algo_name()
+    );
+
     Ok(())
 }
 
-fn main3() -> Result<(), Box<dyn std::error::Error>> {
+pub fn main3() -> Result<(), Box<dyn std::error::Error>> {
     use cms::cert::x509::Certificate;
     use color_eyre::eyre::eyre;
     use der::Decode;
@@ -149,7 +173,7 @@ fn main3() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
-fn main() -> Result<()> {
+pub fn main5() -> Result<()> {
     certificates_from_ldif(&PathBuf::from_str("icaopkd-002-complete-000284.ldif")?)?;
     Ok(())
 }
