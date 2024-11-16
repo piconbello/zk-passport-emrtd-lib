@@ -44,11 +44,6 @@ use crate::parse_ldif::extract_subject_identifier_key;
 
 const SECP_256_K_1: ObjectIdentifier = ObjectIdentifier::new_unwrap("1.3.132.0.10");
 
-// pub trait CurveCompatible: PrimeCurve + CurveArithmetic {
-//     type VerifyingKey: PrehashVerifier<Signature<Self>> + for<'a> TryFrom<&'a [u8]>;
-//     type AffinePoint: FromEncodedPoint<Self> + ToEncodedPoint<Self>;
-// }
-
 #[serde_as]
 #[derive(Debug, Serialize)]
 pub struct PublicKeyCoords {

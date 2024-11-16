@@ -20,6 +20,7 @@ p256 = "0.13.2"
 p384 = "0.13.0"
 p521 = { version = "0.13.3", features = ["ecdsa"] }
 pem = "3.0.4"
+rsa = "0.9.6"
 serde = { version = "1.0.215", features = ["derive"] }
 serde_json = "1.0.132"
 serde_with = { version = "3.11.0", features = ["json", "base64"] }

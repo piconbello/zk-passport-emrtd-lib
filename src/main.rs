@@ -1,6 +1,9 @@
 use clap::{Parser, Subcommand};
 use color_eyre::eyre::{Context, Result};
+use const_oid::db::DB;
 use sha2::Sha256;
+use spki::ObjectIdentifier;
+use std::collections::HashMap;
 use std::path::PathBuf;
 use std::str::FromStr;
 use std::{fs::File, io::BufReader};
@@ -8,7 +11,7 @@ use zk_passport_emrtd_lib::cert_local::{
     extract_cert_local_verification_input, extract_cert_master_verification_input,
 };
 use zk_passport_emrtd_lib::mock::mock_passport_provable;
-use zk_passport_emrtd_lib::parse_ldif::certificates_from_ldif;
+use zk_passport_emrtd_lib::parse_ldif::{certificates_from_ldif, extract_signing_algo};
 
 use zk_passport_emrtd_lib::parse_scan::{
     extract_certificate, extract_signer_info, parse_sod, PassportProvable, PassportScan,
@@ -80,7 +83,7 @@ pub fn main1() -> Result<()> {
     Ok(())
 }
 
-pub fn main() -> Result<()> {
+pub fn main2() -> Result<()> {
     color_eyre::install()?;
     let f = File::open("./passportScan.egemen.json").wrap_err("opening passport scan")?;
     let reader = BufReader::new(f);
@@ -173,7 +176,32 @@ pub fn main3() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
-pub fn main5() -> Result<()> {
-    certificates_from_ldif(&PathBuf::from_str("icaopkd-002-complete-000284.ldif")?)?;
+pub fn main() -> Result<()> {
+    let master_certs =
+        certificates_from_ldif(&PathBuf::from_str("icaopkd-002-complete-000284.ldif")?)?;
+
+    let mut successes: HashMap<ObjectIdentifier, usize> = HashMap::new();
+    let mut errors: HashMap<String, usize> = HashMap::new();
+
+    master_certs
+        .iter()
+        .for_each(|cert| match extract_signing_algo(cert) {
+            Ok(algo) => {
+                *successes.entry(algo).or_insert(0) += 1;
+            }
+            Err(e) => {
+                *errors.entry(e.to_string()).or_insert(0) += 1;
+            }
+        });
+
+    println!("{:?}", errors);
+    println!(
+        "{:?}",
+        successes
+            .iter()
+            .map(|(oid, count)| (DB.by_oid(oid), count))
+            .collect::<Vec<_>>()
+    );
+
     Ok(())
 }
