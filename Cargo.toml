@@ -14,6 +14,7 @@ der = { version = "0.7.9", features = ["std", "pem", "derive", "oid"] }
 digest = { version = "0.10.7", features = ["std", "oid"] }
 ecdsa = { version = "0.16.9", features = ["der", "std"] }
 elliptic-curve = { version = "0.13.8", features = ["sec1", "std"] }
+itertools = "0.13.0"
 k256 = { version = "0.13.4", features = ["ecdsa"] }
 openssl = "0.10.68"
 p224 = "0.13.2"

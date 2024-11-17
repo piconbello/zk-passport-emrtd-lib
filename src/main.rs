@@ -7,6 +7,7 @@ use std::{fs::File, io::BufReader};
 use zk_passport_emrtd_lib::cert_local::{
     extract_cert_local_verification_input, extract_cert_master_verification_input,
 };
+use zk_passport_emrtd_lib::master_certs;
 use zk_passport_emrtd_lib::mock::mock_passport_provable;
 use zk_passport_emrtd_lib::parse_ldif::{
     certificates_from_ldif, extract_subject_identifier_key, MasterCert, MasterCertPubkey,
@@ -222,7 +223,7 @@ pub fn main3() -> Result<(), Box<dyn std::error::Error>> {
 //     Ok(())
 // }
 
-pub fn main() -> Result<()> {
+pub fn main6() -> Result<()> {
     let master_certs =
         certificates_from_ldif(&PathBuf::from_str("icaopkd-002-complete-000284.ldif")?)?;
 
@@ -243,5 +244,12 @@ pub fn main() -> Result<()> {
 
     println!("{}", serde_json::to_string_pretty(&parsed).unwrap());
 
+    Ok(())
+}
+pub fn main() -> Result<()> {
+    let f = File::open("icaopkd-002-complete-000284.ldif").wrap_err("opening ldif file")?;
+    let reader = BufReader::new(f);
+    let master_certs = master_certs::extract_master_certificates(reader)?;
+    println!("{}", master_certs.len());
     Ok(())
 }

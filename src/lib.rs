@@ -1,8 +1,10 @@
 pub mod cert_local;
 pub mod dg1;
+pub mod document_components;
 pub mod lds;
+pub mod master_certs;
 pub mod mock;
 pub mod parse_ldif;
 pub mod parse_scan;
+pub mod pubkeys;
 pub mod signed_attrs;
-// pub mod verification_input;
