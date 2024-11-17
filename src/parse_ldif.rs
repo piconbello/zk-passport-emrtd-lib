@@ -278,6 +278,10 @@ pub fn extract_signing_algo(master_cert: &Certificate) -> Result<ObjectIdentifie
             return Ok(SECP_521_R_1);
         }
 
+        eprintln!(
+            "EC FAIL CERT PEM {}",
+            BASE64_STANDARD.encode(master_cert.to_der().unwrap())
+        );
         bail!("EC failed {}", key_bytes.len());
         // bail!("EC failed {}", debug_ec_key_failure(info, key_bytes));
     } else if info.algorithm.oid == RSA_ENCRYPTION {
