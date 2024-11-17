@@ -1,13 +1,6 @@
-use base64::prelude::BASE64_STANDARD;
-use base64::Engine;
 use clap::{Parser, Subcommand};
-use cms::cert::x509::name::RelativeDistinguishedName;
-use color_eyre::eyre::{Context, ContextCompat, Result};
-use const_oid::db::rfc4519::COUNTRY_NAME;
-use der::asn1::PrintableStringRef;
-use der::Encode;
+use color_eyre::eyre::{Context, Result};
 use sha2::Sha256;
-use std::collections::{BTreeMap, HashMap, HashSet};
 use std::path::PathBuf;
 use std::str::FromStr;
 use std::{fs::File, io::BufReader};
@@ -15,8 +8,9 @@ use zk_passport_emrtd_lib::cert_local::{
     extract_cert_local_verification_input, extract_cert_master_verification_input,
 };
 use zk_passport_emrtd_lib::mock::mock_passport_provable;
-use zk_passport_emrtd_lib::open::parse_spki_params;
-use zk_passport_emrtd_lib::parse_ldif::certificates_from_ldif;
+use zk_passport_emrtd_lib::parse_ldif::{
+    certificates_from_ldif, extract_subject_identifier_key, MasterCert, MasterCertPubkey,
+};
 
 use zk_passport_emrtd_lib::parse_scan::{
     extract_certificate, extract_signer_info, parse_sod, PassportProvable, PassportScan,
@@ -181,49 +175,73 @@ pub fn main3() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
+// pub fn main4() -> Result<()> {
+//     let master_certs =
+//         certificates_from_ldif(&PathBuf::from_str("icaopkd-002-complete-000284.ldif")?)?;
+
+//     let country_algo_pairs: Result<Vec<_>> = master_certs
+//         .iter()
+//         .map(|cert| {
+//             let country = cert
+//                 .tbs_certificate
+//                 .subject
+//                 .0
+//                 .iter()
+//                 .find_map(|dist| dist.0.get(0))
+//                 .filter(|atv| atv.oid == COUNTRY_NAME)
+//                 .and_then(|atv| PrintableStringRef::try_from(&atv.value).ok())
+//                 .map(|s| s.to_string());
+//             let spki_der = cert
+//                 .tbs_certificate
+//                 .subject_public_key_info
+//                 .to_der()
+//                 .unwrap();
+//             let opk = parse_spki_params(&spki_der)?;
+//             let algo_name = opk.algo_name().wrap_err("algo_name error")?;
+
+//             Ok((country, algo_name))
+//         })
+//         .collect();
+
+//     let certs_per_country: HashMap<Option<String>, HashSet<String>> = country_algo_pairs?
+//         .into_iter()
+//         .fold(HashMap::new(), |mut map, (country, algo)| {
+//             map.entry(country)
+//                 .or_insert_with(HashSet::new)
+//                 .insert(algo.to_owned());
+//             map
+//         });
+
+//     let printable_map: BTreeMap<String, HashSet<String>> = certs_per_country
+//         .into_iter()
+//         .map(|(country, algos)| (country.unwrap_or_else(|| "unknown".to_string()), algos))
+//         .collect();
+
+//     println!("{}", serde_json::to_string_pretty(&printable_map).unwrap());
+
+//     Ok(())
+// }
+
 pub fn main() -> Result<()> {
     let master_certs =
         certificates_from_ldif(&PathBuf::from_str("icaopkd-002-complete-000284.ldif")?)?;
 
-    let country_algo_pairs: Result<Vec<_>> = master_certs
-        .iter()
+    let parsed: Result<Vec<_>> = master_certs
+        .into_iter()
         .map(|cert| {
-            let country = cert
-                .tbs_certificate
-                .subject
-                .0
-                .iter()
-                .find_map(|dist| dist.0.get(0))
-                .filter(|atv| atv.oid == COUNTRY_NAME)
-                .and_then(|atv| PrintableStringRef::try_from(&atv.value).ok())
-                .map(|s| s.to_string());
-            let spki_der = cert
-                .tbs_certificate
-                .subject_public_key_info
-                .to_der()
-                .unwrap();
-            let opk = parse_spki_params(&spki_der)?;
-            let algo_name = opk.algo_name().wrap_err("algo_name error")?;
-
-            Ok((country, algo_name))
+            let subject_key_id = extract_subject_identifier_key(&cert)?;
+            let pubkey = MasterCertPubkey::try_from(&cert.tbs_certificate.subject_public_key_info)?;
+            Ok(MasterCert {
+                pubkey,
+                subject_key_id,
+            })
         })
         .collect();
 
-    let certs_per_country: HashMap<Option<String>, HashSet<String>> = country_algo_pairs?
-        .into_iter()
-        .fold(HashMap::new(), |mut map, (country, algo)| {
-            map.entry(country)
-                .or_insert_with(HashSet::new)
-                .insert(algo.to_owned());
-            map
-        });
+    let mut parsed = parsed?;
+    parsed.sort_unstable_by(|a, b| a.subject_key_id.cmp(&b.subject_key_id));
 
-    let printable_map: BTreeMap<String, HashSet<String>> = certs_per_country
-        .into_iter()
-        .map(|(country, algos)| (country.unwrap_or_else(|| "unknown".to_string()), algos))
-        .collect();
-
-    println!("{}", serde_json::to_string_pretty(&printable_map).unwrap());
+    println!("{}", serde_json::to_string_pretty(&parsed).unwrap());
 
     Ok(())
 }
