@@ -231,7 +231,7 @@ pub fn extract_master_certificates<R: BufRead>(reader: R) -> Result<Vec<Certific
 }
 
 #[serde_as]
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct MasterCert {
     pub pubkey: Pubkey,
     #[serde_as(as = "Base64")]

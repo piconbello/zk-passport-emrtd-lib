@@ -1,3 +1,5 @@
+use std::ops::{Deref, DerefMut};
+
 use base64::{prelude::BASE64_STANDARD, Engine};
 use color_eyre::eyre::{bail, Context, ContextCompat, Error};
 use der::{asn1::BitString, Any, Encode};
@@ -9,29 +11,29 @@ use openssl::{
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use spki::SubjectPublicKeyInfo;
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(tag = "type")]
 pub enum Pubkey {
     EC(PubkeyEC),
     RSA(PubkeyRSA),
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct PubkeyEC {
     #[serde(with = "nid_serialization")]
     pub curve: Nid,
-    #[serde(with = "bignum_serialization")]
-    pub x: BigNum,
-    #[serde(with = "bignum_serialization")]
-    pub y: BigNum,
+    #[serde(with = "clonable_bignum_serialization")]
+    pub x: ClonableBigNum,
+    #[serde(with = "clonable_bignum_serialization")]
+    pub y: ClonableBigNum,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct PubkeyRSA {
-    #[serde(with = "bignum_serialization")]
-    pub modulus: BigNum,
-    #[serde(with = "bignum_serialization")]
-    pub exponent: BigNum,
+    #[serde(with = "clonable_bignum_serialization")]
+    pub modulus: ClonableBigNum,
+    #[serde(with = "clonable_bignum_serialization")]
+    pub exponent: ClonableBigNum,
 }
 
 impl TryFrom<&[u8]> for Pubkey {
@@ -53,7 +55,11 @@ impl TryFrom<&[u8]> for Pubkey {
                 pub_key.affine_coordinates_gfp(group, &mut x, &mut y, &mut ctx)?;
                 let curve = group.curve_name().wrap_err("unknown curve")?;
 
-                Ok(Self::EC(PubkeyEC { curve, x, y }))
+                Ok(Self::EC(PubkeyEC {
+                    curve,
+                    x: x.into(),
+                    y: y.into(),
+                }))
             }
             Id::RSA => {
                 let rsa = pkey.rsa()?;
@@ -61,8 +67,8 @@ impl TryFrom<&[u8]> for Pubkey {
                 let e = rsa.e();
 
                 Ok(Self::RSA(PubkeyRSA {
-                    modulus: n.to_owned()?,
-                    exponent: e.to_owned()?,
+                    modulus: n.to_owned()?.into(),
+                    exponent: e.to_owned()?.into(),
                 }))
             }
             _ => bail!("could not parse spki"),
@@ -81,48 +87,10 @@ impl TryFrom<&SubjectPublicKeyInfo<Any, BitString>> for Pubkey {
     }
 }
 
-// #[derive(Debug)]
-// pub struct SerializableBigNum(pub BigNum);
-
-// impl Serialize for SerializableBigNum {
-//     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-//     where
-//         S: Serializer,
-//     {
-//         // Convert BigNum to bytes
-//         let bytes = self.0.to_vec();
-
-//         // Convert bytes to base64
-//         let base64_str = BASE64_STANDARD.encode(bytes);
-
-//         // Serialize the base64 string
-//         serializer.serialize_str(&base64_str)
-//     }
-// }
-
-// impl<'de> Deserialize<'de> for SerializableBigNum {
-//     fn deserialize<D>(deserializer: D) -> Result<SerializableBigNum, D::Error>
-//     where
-//         D: Deserializer<'de>,
-//     {
-//         use serde::de::Error;
-
-//         // Deserialize as string first
-//         let base64_str = String::deserialize(deserializer)?;
-
-//         // Decode base64 to bytes
-//         let bytes = BASE64_STANDARD.decode(base64_str).map_err(Error::custom)?;
-
-//         // Convert bytes to BigNum
-//         let bn = BigNum::from_slice(&bytes).map_err(Error::custom)?;
-
-//         Ok(SerializableBigNum(bn))
-//     }
-// }
-mod bignum_serialization {
+mod clonable_bignum_serialization {
     use super::*;
 
-    pub fn serialize<S>(bignum: &BigNum, serializer: S) -> Result<S::Ok, S::Error>
+    pub fn serialize<S>(bignum: &ClonableBigNum, serializer: S) -> Result<S::Ok, S::Error>
     where
         S: Serializer,
     {
@@ -131,14 +99,15 @@ mod bignum_serialization {
         serializer.serialize_str(&base64_str)
     }
 
-    pub fn deserialize<'de, D>(deserializer: D) -> Result<BigNum, D::Error>
+    pub fn deserialize<'de, D>(deserializer: D) -> Result<ClonableBigNum, D::Error>
     where
         D: Deserializer<'de>,
     {
         use serde::de::Error;
         let base64_str = String::deserialize(deserializer)?;
         let bytes = BASE64_STANDARD.decode(base64_str).map_err(Error::custom)?;
-        BigNum::from_slice(&bytes).map_err(Error::custom)
+        let bn = BigNum::from_slice(&bytes).map_err(Error::custom)?;
+        Ok(ClonableBigNum::from(bn))
     }
 }
 
@@ -173,5 +142,37 @@ mod nid_serialization {
         }
 
         Ok(Nid::from_raw(nid))
+    }
+}
+#[derive(Debug)]
+pub struct ClonableBigNum(BigNum);
+
+impl Clone for ClonableBigNum {
+    fn clone(&self) -> Self {
+        let mut new = BigNum::new().expect("Failed to create BigNum");
+        new.copy_from_slice(&self.0.to_vec())
+            .expect("Failed to copy BigNum");
+        ClonableBigNum(new)
+    }
+}
+
+impl Deref for ClonableBigNum {
+    type Target = BigNum;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl DerefMut for ClonableBigNum {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.0
+    }
+}
+
+// Add conversion methods
+impl From<BigNum> for ClonableBigNum {
+    fn from(bn: BigNum) -> Self {
+        ClonableBigNum(bn)
     }
 }

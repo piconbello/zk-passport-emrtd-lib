@@ -1,12 +1,15 @@
 use clap::{Parser, Subcommand};
 use color_eyre::eyre::{Context, Result};
 use sha2::Sha256;
+use std::fs;
 use std::path::PathBuf;
 use std::str::FromStr;
 use std::{fs::File, io::BufReader};
+use zk_passport_emrtd_lib::bundle::VerificationBundle;
 use zk_passport_emrtd_lib::cert_local::{
     extract_cert_local_verification_input, extract_cert_master_verification_input,
 };
+use zk_passport_emrtd_lib::document_components::DocumentComponents;
 use zk_passport_emrtd_lib::master_certs;
 use zk_passport_emrtd_lib::mock::mock_passport_provable;
 use zk_passport_emrtd_lib::parse_ldif::{
@@ -246,11 +249,22 @@ pub fn main6() -> Result<()> {
 
     Ok(())
 }
+
 pub fn main() -> Result<()> {
     let f = File::open("icaopkd-002-complete-000284.ldif").wrap_err("opening ldif file")?;
     let reader = BufReader::new(f);
     let master_certs = master_certs::extract_master_certificates(reader)?;
     let distilled = master_certs::distill_master_certificates(&master_certs)?;
-    println!("{}", serde_json::to_string_pretty(&distilled).unwrap());
+
+    let scan_text = fs::read_to_string("passportScan.egemen.json")?;
+    let scan: PassportScan = serde_json::from_str(&scan_text)?;
+    let sod = parse_sod(&scan.sod)?;
+
+    let components = DocumentComponents::new(&sod, &scan.dg1)?;
+
+    let bundle = VerificationBundle::bundle(&components, &distilled)?;
+
+    println!("{}", serde_json::to_string_pretty(&bundle).unwrap());
+
     Ok(())
 }
