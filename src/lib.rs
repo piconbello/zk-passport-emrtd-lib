@@ -1,4 +1,5 @@
 pub mod bundle;
+pub mod bundle_verify;
 pub mod cert_local;
 pub mod dg1;
 pub mod document_components;

@@ -16,6 +16,7 @@ use zk_passport_emrtd_lib::parse_ldif::{
 };
 use zk_passport_emrtd_lib::{master_certs, mock_bundle};
 
+use zk_passport_emrtd_lib::bundle_verify::Verify;
 use zk_passport_emrtd_lib::parse_scan::{
     extract_certificate, extract_signer_info, parse_sod, PassportProvable, PassportScan,
 };
@@ -251,6 +252,7 @@ pub fn main6() -> Result<()> {
 }
 
 pub fn main() -> Result<()> {
+    color_eyre::install()?;
     let f = File::open("icaopkd-002-complete-000284.ldif").wrap_err("opening ldif file")?;
     let reader = BufReader::new(f);
     let master_certs = master_certs::extract_master_certificates(reader)?;
@@ -266,9 +268,13 @@ pub fn main() -> Result<()> {
 
     println!("{}", serde_json::to_string_pretty(&bundle).unwrap());
 
+    bundle.verify().wrap_err("verify bundle")?;
+
     let mocked_bundle = mock_bundle::mock_verification_bundle(mock_bundle::MRZ_FRODO)?;
 
     println!("{}", serde_json::to_string_pretty(&mocked_bundle).unwrap());
+
+    mocked_bundle.verify().wrap_err("verify mock bundle")?;
 
     Ok(())
 }

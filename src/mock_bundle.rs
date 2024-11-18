@@ -127,72 +127,68 @@ impl MockDigest {
 }
 
 fn mock_sign(signed_attrs_der: &[u8]) -> Result<MockSignOutput> {
-    // 1. Create private key
+    // 1. Create CSCA (master) key pair
     let group = EcGroup::from_curve_name(Nid::X9_62_PRIME256V1)?;
-    let ec_key = EcKey::generate(&group)?;
-    let pkey = PKey::from_ec_key(ec_key)?;
+    let csca_key = EcKey::generate(&group)?;
+    let csca_pkey = PKey::from_ec_key(csca_key)?;
 
-    // 2. Create certificate
+    // 2. Create Document Signer key pair
+    let ds_key = EcKey::generate(&group)?;
+    let ds_pkey = PKey::from_ec_key(ds_key)?;
+
+    // 3. Create Document Signer certificate
     let mut builder = X509Builder::new()?;
-
-    // Set version
     builder.set_version(2)?;
 
-    // Set serial number
     let serial = BigNum::from_u32(1)?.to_asn1_integer()?;
     builder.set_serial_number(&serial)?;
 
-    // Set subject/issuer name
     let mut name_builder = X509NameBuilder::new()?;
-    name_builder.append_entry_by_text("CN", "Mock CSCA")?;
+    name_builder.append_entry_by_text("CN", "Mock DS")?;
     let name = name_builder.build();
-    builder.set_issuer_name(&name)?;
-    builder.set_subject_name(&name)?;
 
-    // Set validity period
+    builder.set_subject_name(&name)?;
+    builder.set_issuer_name(&name)?;
+
     let not_before = Asn1Time::days_from_now(0)?;
     let not_after = Asn1Time::days_from_now(365)?;
     builder.set_not_before(&not_before)?;
     builder.set_not_after(&not_after)?;
 
-    // Set public key
-    builder.set_pubkey(&pkey)?;
+    // Set DS public key in certificate
+    builder.set_pubkey(&ds_pkey)?;
 
-    // Create extensions context first
+    // Create and add extensions
     let ctx = builder.x509v3_context(None, None);
-
-    // Create both extensions before attempting to append them
     #[allow(deprecated)]
     let ski_ext = X509Extension::new(None, Some(&ctx), "subjectKeyIdentifier", "hash")?;
-
     #[allow(deprecated)]
     let aki_ext = X509Extension::new(None, Some(&ctx), "authorityKeyIdentifier", "keyid")?;
-
-    // Now append the extensions
     builder.append_extension(ski_ext)?;
     builder.append_extension(aki_ext)?;
 
-    // Sign the certificate
-    builder.sign(&pkey, MessageDigest::sha256())?;
+    // Sign certificate with CSCA key
+    builder.sign(&csca_pkey, MessageDigest::sha256())?;
     let cert = builder.build();
 
-    // 3. Sign the payload using the private key
-    let mut signer = openssl::sign::Signer::new(MessageDigest::sha256(), &pkey)?;
+    // 4. Sign the passport data using the DS private key
+    let mut signer = openssl::sign::Signer::new(MessageDigest::sha256(), &ds_pkey)?;
     signer.update(signed_attrs_der)?;
     let signature = signer.sign_to_vec()?;
 
-    // 4. Return the struct with all required data
-    let pubkey_der = pkey.public_key_to_der()?;
-    let key_id = openssl::sha::sha256(&pubkey_der);
+    // 5. Get required public keys and identifiers
+    let csca_pubkey_der = csca_pkey.public_key_to_der()?;
+    let ds_pubkey_der = ds_pkey.public_key_to_der()?;
+    let key_id = openssl::sha::sha256(&csca_pubkey_der);
 
     Ok(MockSignOutput {
         document_signature: signature,
-        cert_local_pubkey: Pubkey::try_from(pubkey_der.as_slice())?,
+        cert_local_pubkey: Pubkey::try_from(ds_pubkey_der.as_slice())?,
         cert_local_tbs: cert.to_der()?,
         cert_local_tbs_digest_algo: ID_SHA_256,
         cert_local_signature: cert.signature().as_slice().to_vec(),
         cert_master_subject_key_id: SmallVec::from_slice(&key_id[..20]),
-        cert_master_pubkey: Pubkey::try_from(pubkey_der.as_slice())?,
+        cert_master_pubkey: Pubkey::try_from(csca_pubkey_der.as_slice())?,
     })
 }
 

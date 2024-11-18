@@ -1,0 +1,135 @@
+use crate::{bundle::VerificationBundle, pubkeys::Pubkey};
+use color_eyre::eyre::{bail, eyre, Context, Result};
+use const_oid::{
+    db::rfc5912::{ID_SHA_224, ID_SHA_256, ID_SHA_384, ID_SHA_512},
+    ObjectIdentifier,
+};
+use openssl::{
+    hash::{Hasher, MessageDigest},
+    pkey::{PKey, Public},
+    sign::Verifier,
+};
+
+pub trait Verify {
+    fn verify(&self) -> Result<()>;
+}
+
+impl Verify for VerificationBundle {
+    fn verify(&self) -> Result<()> {
+        // 1. Verify that digest of dg1 is in lds
+        let dg1_digest = compute_digest(&self.dg1, &self.digest_algo)?;
+        if !self
+            .lds
+            .windows(dg1_digest.len())
+            .any(|window| window == dg1_digest)
+        {
+            return Err(eyre!("DG1 digest not found in LDS"));
+        }
+
+        // 2. Verify that digest of lds is in signed_attrs
+        let lds_digest = compute_digest(&self.lds, &self.digest_algo)?;
+        if !self
+            .signed_attrs
+            .windows(lds_digest.len())
+            .any(|window| window == lds_digest)
+        {
+            return Err(eyre!("LDS digest not found in signed attributes"));
+        }
+
+        // 3. Verify that signed_attrs is signed by the local cert
+        let pkey = match &self.cert_local_pubkey {
+            Pubkey::EC(ec) => {
+                let group = openssl::ec::EcGroup::from_curve_name(ec.curve)?;
+                let mut ctx = openssl::bn::BigNumContext::new()?;
+                let mut point = openssl::ec::EcPoint::new(&group)?;
+                point.set_affine_coordinates_gfp(&group, &ec.x, &ec.y, &mut ctx)?;
+
+                let ec_key = openssl::ec::EcKey::from_public_key(&group, &point)?;
+                PKey::from_ec_key(ec_key)?
+            }
+            Pubkey::RSA(rsa) => {
+                let modulus = rsa.modulus.to_vec();
+                let exponent = rsa.exponent.to_vec();
+                let rsa_key = openssl::rsa::Rsa::from_public_components(
+                    openssl::bn::BigNum::from_slice(&modulus)?,
+                    openssl::bn::BigNum::from_slice(&exponent)?,
+                )?;
+                PKey::from_rsa(rsa_key)?
+            }
+        };
+
+        verify_signature(
+            &self.signed_attrs,
+            &self.document_signature,
+            &pkey,
+            &self.digest_algo,
+        )
+        .wrap_err("verifying document")?;
+
+        // 4. Verify that local cert is signed by the master cert
+        let master_pkey = match &self.cert_master_pubkey {
+            Pubkey::EC(ec) => {
+                let group = openssl::ec::EcGroup::from_curve_name(ec.curve)?;
+                let mut ctx = openssl::bn::BigNumContext::new()?;
+                let mut point = openssl::ec::EcPoint::new(&group)?;
+                point.set_affine_coordinates_gfp(&group, &ec.x, &ec.y, &mut ctx)?;
+
+                let ec_key = openssl::ec::EcKey::from_public_key(&group, &point)?;
+                PKey::from_ec_key(ec_key)?
+            }
+            Pubkey::RSA(rsa) => {
+                let modulus = rsa.modulus.to_vec();
+                let exponent = rsa.exponent.to_vec();
+                let rsa_key = openssl::rsa::Rsa::from_public_components(
+                    openssl::bn::BigNum::from_slice(&modulus)?,
+                    openssl::bn::BigNum::from_slice(&exponent)?,
+                )?;
+                PKey::from_rsa(rsa_key)?
+            }
+        };
+
+        verify_signature(
+            &self.cert_local_tbs,
+            &self.cert_local_signature,
+            &master_pkey,
+            &self.cert_local_tbs_digest_algo,
+        )
+        .wrap_err("verifying cert")?;
+
+        Ok(())
+    }
+}
+
+fn message_digest(algo: &ObjectIdentifier) -> Result<MessageDigest> {
+    match *algo {
+        ID_SHA_224 => Ok(MessageDigest::sha224()),
+        ID_SHA_256 => Ok(MessageDigest::sha256()),
+        ID_SHA_384 => Ok(MessageDigest::sha384()),
+        ID_SHA_512 => Ok(MessageDigest::sha512()),
+        _ => return Err(eyre!("Unsupported digest algorithm")),
+    }
+}
+
+fn compute_digest(data: &[u8], algo: &ObjectIdentifier) -> Result<Vec<u8>> {
+    let md = message_digest(algo)?;
+    let mut hasher = Hasher::new(md)?;
+    hasher.update(data)?;
+    Ok(hasher.finish()?.to_vec())
+}
+
+fn verify_signature(
+    data: &[u8],
+    signature: &[u8],
+    public_key: &PKey<Public>,
+    digest_algo: &ObjectIdentifier,
+) -> Result<()> {
+    let md = message_digest(digest_algo)?;
+    let mut verifier = Verifier::new(md, public_key)?;
+    verifier.update(data)?;
+
+    if verifier.verify(signature)? {
+        Ok(())
+    } else {
+        Err(eyre!("Invalid signature"))
+    }
+}
