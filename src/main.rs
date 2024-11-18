@@ -250,6 +250,7 @@ pub fn main() -> Result<()> {
     let f = File::open("icaopkd-002-complete-000284.ldif").wrap_err("opening ldif file")?;
     let reader = BufReader::new(f);
     let master_certs = master_certs::extract_master_certificates(reader)?;
-    println!("{}", master_certs.len());
+    let distilled = master_certs::distill_master_certificates(&master_certs)?;
+    println!("{}", serde_json::to_string_pretty(&distilled).unwrap());
     Ok(())
 }

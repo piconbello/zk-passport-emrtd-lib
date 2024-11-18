@@ -1610,6 +1610,7 @@ dependencies = [
  "itertools",
  "k256",
  "openssl",
+ "openssl-sys",
  "p224",
  "p256",
  "p384",

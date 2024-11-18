@@ -6,10 +6,15 @@ use color_eyre::{
     Result,
 };
 use der::{asn1::SetOfVec, Decode, Encode, Sequence};
-use digest::Digest;
+use digest::{generic_array::GenericArray, Digest, OutputSizeUser};
 use itertools::Itertools;
+use serde::{Deserialize, Serialize};
+use serde_with::{base64::Base64, serde_as};
 use sha2::Sha512;
+use smallvec::SmallVec;
 use std::{cmp::Ordering, collections::BTreeSet, io::BufRead};
+
+use crate::{parse_ldif::extract_subject_identifier_key, pubkeys::Pubkey};
 
 struct CertIterator<R: BufRead> {
     reader: R,
@@ -180,7 +185,7 @@ fn extract_certificates_from_cert_der(cert_der: &[u8]) -> Result<Vec<Certificate
 pub fn deduplicate_certificates(certs: Vec<Certificate>) -> Vec<Certificate> {
     #[derive(Eq, PartialEq)]
     struct CertificateWithHash {
-        hash: Vec<u8>,
+        hash: GenericArray<u8, <Sha512 as OutputSizeUser>::OutputSize>,
         cert: Certificate,
     }
 
@@ -190,8 +195,7 @@ pub fn deduplicate_certificates(certs: Vec<Certificate>) -> Vec<Certificate> {
                 cert.tbs_certificate
                     .to_der()
                     .expect("we deserialized it should not fail"),
-            )
-            .to_vec();
+            );
 
             CertificateWithHash { hash, cert }
         }
@@ -224,4 +228,26 @@ pub fn extract_master_certificates<R: BufRead>(reader: R) -> Result<Vec<Certific
         .collect::<Result<Vec<_>>>()?;
 
     Ok(deduplicate_certificates(certs))
+}
+
+#[serde_as]
+#[derive(Debug, Serialize, Deserialize)]
+pub struct MasterCert {
+    pub pubkey: Pubkey,
+    #[serde_as(as = "Base64")]
+    pub subject_key_id: SmallVec<[u8; 20]>,
+}
+
+pub fn distill_master_certificates(certs: &[Certificate]) -> Result<Vec<MasterCert>> {
+    certs
+        .iter()
+        .map(|cert| {
+            let pubkey = Pubkey::try_from(&cert.tbs_certificate.subject_public_key_info)?;
+            let subject_key_id = extract_subject_identifier_key(cert)?;
+            Ok(MasterCert {
+                pubkey,
+                subject_key_id,
+            })
+        })
+        .collect()
 }
