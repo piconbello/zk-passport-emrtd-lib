@@ -10,11 +10,11 @@ use zk_passport_emrtd_lib::cert_local::{
     extract_cert_local_verification_input, extract_cert_master_verification_input,
 };
 use zk_passport_emrtd_lib::document_components::DocumentComponents;
-use zk_passport_emrtd_lib::master_certs;
 use zk_passport_emrtd_lib::mock::mock_passport_provable;
 use zk_passport_emrtd_lib::parse_ldif::{
     certificates_from_ldif, extract_subject_identifier_key, MasterCert, MasterCertPubkey,
 };
+use zk_passport_emrtd_lib::{master_certs, mock_bundle};
 
 use zk_passport_emrtd_lib::parse_scan::{
     extract_certificate, extract_signer_info, parse_sod, PassportProvable, PassportScan,
@@ -265,6 +265,10 @@ pub fn main() -> Result<()> {
     let bundle = VerificationBundle::bundle(&components, &distilled)?;
 
     println!("{}", serde_json::to_string_pretty(&bundle).unwrap());
+
+    let mocked_bundle = mock_bundle::mock_verification_bundle(mock_bundle::MRZ_FRODO)?;
+
+    println!("{}", serde_json::to_string_pretty(&mocked_bundle).unwrap());
 
     Ok(())
 }

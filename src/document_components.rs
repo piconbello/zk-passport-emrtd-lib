@@ -118,6 +118,7 @@ pub struct DocumentComponents<'a> {
     pub signed_attrs: &'a SignedAttributes,
     pub digest_algo: ObjectIdentifier,
     pub certificate: &'a CertificateInner,
+    pub document_signature: &'a [u8],
 }
 
 impl<'a> DocumentComponents<'a> {
@@ -130,6 +131,7 @@ impl<'a> DocumentComponents<'a> {
             signed_attrs: extract_signed_attrs(signer_info)?,
             digest_algo: extract_digest_algo(sod)?,
             certificate,
+            document_signature: signer_info.signature.as_bytes(),
         })
     }
 }

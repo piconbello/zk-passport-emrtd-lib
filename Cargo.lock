@@ -1607,6 +1607,7 @@ dependencies = [
  "digest",
  "ecdsa",
  "elliptic-curve",
+ "hex",
  "itertools",
  "k256",
  "openssl",

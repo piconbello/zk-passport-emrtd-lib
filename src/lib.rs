@@ -5,6 +5,7 @@ pub mod document_components;
 pub mod lds;
 pub mod master_certs;
 pub mod mock;
+pub mod mock_bundle;
 pub mod parse_ldif;
 pub mod parse_scan;
 pub mod pubkeys;

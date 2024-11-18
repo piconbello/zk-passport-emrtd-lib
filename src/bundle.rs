@@ -35,6 +35,8 @@ pub struct VerificationBundle {
     pub signed_attrs: SmallVec<[u8; 128]>,
     #[serde(with = "object_identifier_serialization")]
     pub digest_algo: ObjectIdentifier,
+    #[serde_as(as = "Base64")]
+    pub document_signature: Vec<u8>,
     pub cert_local_pubkey: Pubkey,
     #[serde_as(as = "Base64")]
     pub cert_local_tbs: Vec<u8>,
@@ -61,6 +63,7 @@ impl VerificationBundle {
             lds: components.lds.into(),
             signed_attrs: components.signed_attrs.to_der()?.into(),
             digest_algo: components.digest_algo,
+            document_signature: components.document_signature.into(),
             cert_local_pubkey: Pubkey::try_from(
                 &components
                     .certificate
