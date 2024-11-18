@@ -7,10 +7,11 @@ use color_eyre::{
     eyre::{bail, Context, ContextCompat},
     Result,
 };
-use const_oid::db::rfc5912::ID_CE_AUTHORITY_KEY_IDENTIFIER;
+use const_oid::db::rfc5912::{ID_CE_AUTHORITY_KEY_IDENTIFIER, ID_CE_SUBJECT_KEY_IDENTIFIER};
 use der::{asn1::OctetStringRef, AnyRef, Decode, SliceReader};
 use smallvec::SmallVec;
 use spki::ObjectIdentifier;
+use x509_cert::ext::pkix::SubjectKeyIdentifier;
 
 const OID_MRTD_SIGNATURE_DATA: ObjectIdentifier = ObjectIdentifier::new_unwrap("2.23.136.1.1.1");
 
@@ -110,6 +111,34 @@ pub fn extract_authority_identifier_key(cert: &CertificateInner) -> Result<Small
             bail!("could not parse auth key ident");
         }
     }
+}
+
+pub fn extract_subject_identifier_key(
+    master_cert: &CertificateInner,
+) -> Result<SmallVec<[u8; 20]>> {
+    let exts = master_cert
+        .tbs_certificate
+        .extensions
+        .as_ref()
+        .wrap_err("need extensions in cert")?;
+
+    let ext = exts
+        .iter()
+        .find(|ext| ext.extn_id == ID_CE_SUBJECT_KEY_IDENTIFIER)
+        .wrap_err("need subject key extension")?;
+
+    let ki: SmallVec<[u8; 20]> = match SubjectKeyIdentifier::from_der(ext.extn_value.as_bytes()) {
+        Ok(ski) => {
+            let ki = ski.0.as_bytes();
+            ki.into()
+        }
+        Err(_) => {
+            let ki = ext.extn_value.as_bytes();
+            ki.into()
+        }
+    };
+
+    Ok(ki)
 }
 
 pub struct DocumentComponents<'a> {

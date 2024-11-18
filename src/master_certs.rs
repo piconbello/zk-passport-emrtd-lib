@@ -14,7 +14,7 @@ use sha2::Sha512;
 use smallvec::SmallVec;
 use std::{cmp::Ordering, collections::BTreeSet, io::BufRead};
 
-use crate::{parse_ldif::extract_subject_identifier_key, pubkeys::Pubkey};
+use crate::{document_components::extract_subject_identifier_key, pubkeys::Pubkey};
 
 struct CertIterator<R: BufRead> {
     reader: R,

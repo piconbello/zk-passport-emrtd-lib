@@ -1,7 +1,7 @@
 use std::ops::{Deref, DerefMut};
 
 use base64::{prelude::BASE64_STANDARD, Engine};
-use color_eyre::eyre::{bail, Context, ContextCompat, Error};
+use color_eyre::eyre::{bail, Context, ContextCompat, Error, Result};
 use der::{asn1::BitString, Any, Encode};
 use openssl::{
     bn::{BigNum, BigNumContext},

@@ -1,9 +1,13 @@
-use crate::{bundle::VerificationBundle, pubkeys::Pubkey};
+use crate::{
+    bundle::{Asn1Signature, Signature, VerificationBundle},
+    pubkeys::Pubkey,
+};
 use color_eyre::eyre::{bail, eyre, Context, Result};
 use const_oid::{
     db::rfc5912::{ID_SHA_224, ID_SHA_256, ID_SHA_384, ID_SHA_512},
     ObjectIdentifier,
 };
+use der::Encode;
 use openssl::{
     hash::{Hasher, MessageDigest},
     pkey::{PKey, Public},
@@ -106,7 +110,7 @@ fn message_digest(algo: &ObjectIdentifier) -> Result<MessageDigest> {
         ID_SHA_256 => Ok(MessageDigest::sha256()),
         ID_SHA_384 => Ok(MessageDigest::sha384()),
         ID_SHA_512 => Ok(MessageDigest::sha512()),
-        _ => return Err(eyre!("Unsupported digest algorithm")),
+        _ => Err(eyre!("Unsupported digest algorithm")),
     }
 }
 
@@ -119,7 +123,7 @@ fn compute_digest(data: &[u8], algo: &ObjectIdentifier) -> Result<Vec<u8>> {
 
 fn verify_signature(
     data: &[u8],
-    signature: &[u8],
+    signature: &Signature,
     public_key: &PKey<Public>,
     digest_algo: &ObjectIdentifier,
 ) -> Result<()> {
@@ -127,9 +131,21 @@ fn verify_signature(
     let mut verifier = Verifier::new(md, public_key)?;
     verifier.update(data)?;
 
-    if verifier.verify(signature)? {
-        Ok(())
-    } else {
-        Err(eyre!("Invalid signature"))
+    // Convert signature to bytes based on type
+    let signature_bytes = match signature {
+        Signature::EC(ec_sig) => {
+            let asn1_sig = Asn1Signature::try_from(ec_sig)?;
+            asn1_sig.to_der()?
+        }
+        Signature::RSA(rsa_sig) => {
+            // For RSA signatures, just use the raw bytes
+            rsa_sig.to_vec()
+        }
+    };
+
+    match verifier.verify(&signature_bytes) {
+        Ok(true) => Ok(()),
+        Ok(false) => bail!("Invalid signature"),
+        Err(e) => bail!("Verification error: {}", e),
     }
 }
