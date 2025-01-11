@@ -239,7 +239,7 @@ pub struct MasterCert {
 }
 
 pub fn distill_master_certificates(certs: &[Certificate]) -> Result<Vec<MasterCert>> {
-    certs
+    let mut mastercerts: Vec<_> = certs
         .iter()
         .map(|cert| {
             let pubkey = Pubkey::try_from(&cert.tbs_certificate.subject_public_key_info)?;
@@ -249,5 +249,7 @@ pub fn distill_master_certificates(certs: &[Certificate]) -> Result<Vec<MasterCe
                 subject_key_id,
             })
         })
-        .collect()
+        .collect::<Result<Vec<_>>>()?;
+    mastercerts.sort_unstable_by(|a, b| a.subject_key_id.cmp(&b.subject_key_id));
+    Ok(mastercerts)
 }

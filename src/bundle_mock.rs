@@ -2,6 +2,7 @@ use crate::{
     bundle::{Signature, SignatureEC, VerificationBundle},
     pubkeys::{ClonableBigNum, Pubkey, PubkeyEC},
 };
+use base64::{prelude::BASE64_STANDARD, Engine};
 use cms::{cert::x509::attr::Attribute, signed_data::SignedAttributes};
 use color_eyre::Result;
 use const_oid::db::rfc5912::ID_SHA_256;
@@ -22,6 +23,7 @@ use x509_cert::certificate::CertificateInner;
 
 pub const MRZ_FRODO: &[u8; 88] =
     b"P<GBRBAGGINS<<FRODO<<<<<<<<<<<<<<<<<<<<<<<<<P231458901GBR6709224M2209151ZE184226B<<<<<18";
+const SECP_256_K_1: ObjectIdentifier = ObjectIdentifier::new_unwrap("1.3.132.0.10");
 
 fn mock_dg1_td3(mrz: &[u8; 88]) -> [u8; 93] {
     const MRZ_TD3_HEADER: [u8; 5] = [0x61, 0x5B, 0x5F, 0x1F, 0x58];
@@ -64,13 +66,13 @@ fn hash_serialize_datagroup(
     }
 }
 
-fn mock_lds(m_digest: MockDigest, dg1: &[u8], include_dgs: BTreeSet<u8>) -> Vec<u8> {
+fn mock_lds(m_digest: MockDigest, dg1: &[u8], include_dgs: &BTreeSet<u8>) -> Vec<u8> {
     let mut dg_hashes = Vec::new();
     dg_hashes.push(hash_serialize_datagroup(m_digest, 1, dg1));
     include_dgs
-        .into_iter()
-        .filter(|n| *n != 1u8)
-        .for_each(|n| dg_hashes.push(hash_serialize_datagroup(m_digest, n, [n])));
+        .iter()
+        .filter(|n| **n != 1u8)
+        .for_each(|n| dg_hashes.push(hash_serialize_datagroup(m_digest, *n, [*n])));
 
     let lds = LDSSecurityObject {
         version: 0,
@@ -160,9 +162,7 @@ fn mock_sign(signed_attrs_der: &[u8]) -> Result<MockSignOutput> {
     let ds_spki = SubjectPublicKeyInfoOwned {
         algorithm: AlgorithmIdentifierOwned {
             oid: const_oid::ObjectIdentifier::new_unwrap("1.2.840.10045.2.1"), // id-ecPublicKey
-            parameters: Some(der::Any::from_der(
-                &const_oid::ObjectIdentifier::new_unwrap("1.3.132.0.10").to_der()?,
-            )?),
+            parameters: Some(der::Any::from_der(&SECP_256_K_1.to_der()?)?),
         },
         subject_public_key: BitString::from_bytes(
             ds_public_key.to_encoded_point(false).as_bytes(),
@@ -195,8 +195,8 @@ fn mock_sign(signed_attrs_der: &[u8]) -> Result<MockSignOutput> {
     })?;
 
     // Build and sign certificate
-    let tbs_cert: CertificateInner = builder.build::<k256::ecdsa::DerSignature>()?;
-    let tbs_cert_der = tbs_cert.to_der()?;
+    let local_cert: CertificateInner = builder.build::<k256::ecdsa::DerSignature>()?;
+    let tbs_cert_der = local_cert.tbs_certificate.to_der()?;
 
     // Sign TBS certificate with CSCA key
     let cert_signature: DerSignature = csca_secret_key.sign(&tbs_cert_der);
@@ -206,6 +206,10 @@ fn mock_sign(signed_attrs_der: &[u8]) -> Result<MockSignOutput> {
     // Sign document with DS key
     let document_signature: DerSignature = ds_secret_key.sign(signed_attrs_der);
     let document_signature_der = document_signature.to_der()?;
+    eprintln!(
+        "doc sign base64 {}",
+        BASE64_STANDARD.encode(&document_signature_der)
+    );
     let document_signature =
         Signature::EC(SignatureEC::try_from(document_signature_der.as_slice())?);
 
@@ -263,10 +267,10 @@ struct MockSignOutput {
     pub cert_master_pubkey: Pubkey,
 }
 
-pub fn mock_verification_bundle(mrz: &[u8; 88]) -> Result<VerificationBundle> {
+pub fn mock_verification_bundle(mrz: &[u8; 88], dgs: &BTreeSet<u8>) -> Result<VerificationBundle> {
     let m_digest = MockDigest;
     let dg1 = mock_dg1_td3(mrz);
-    let lds = mock_lds(m_digest, &dg1, BTreeSet::from([1, 2, 3, 11, 12, 14]));
+    let lds = mock_lds(m_digest, &dg1, dgs);
     let signed_attrs = prepare_signed_attributes(&m_digest.digest(&lds));
     let s = mock_sign(&signed_attrs)?;
     Ok(VerificationBundle {

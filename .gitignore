@@ -7,3 +7,5 @@
 **/*.xz
 **/*.old
 files/
+.idea
+.ropeproject

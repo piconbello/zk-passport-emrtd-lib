@@ -2,9 +2,11 @@ use clap::{Parser, Subcommand};
 use color_eyre::eyre::{bail, Context, ContextCompat, Result};
 use serde::Deserialize;
 use serde_with::{base64::Base64, serde_as};
+use std::collections::BTreeSet;
 use std::fs;
 use std::path::PathBuf;
 use std::{fs::File, io::BufReader};
+use zk_passport_emrtd_lib::bundle::VerificationBundle;
 use zk_passport_emrtd_lib::{
     bundle, bundle_mock, bundle_verify::Verify, document_components, master_certs,
 };
@@ -40,6 +42,15 @@ enum Commands {
         /// MRZ content of length 88
         #[arg(long)]
         mrz: Option<String>,
+
+        #[arg(long, value_delimiter = ',', value_parser = clap::value_parser!(u8))]
+        dgs: Option<Vec<u8>>,
+    },
+
+    /// verifies a bundle file
+    Verify {
+        #[arg(required = true, value_name = "FILE")]
+        bundle_file: PathBuf,
     },
 }
 
@@ -50,7 +61,7 @@ fn parse_masterlist_from_ldif(ldif_file: &PathBuf) -> Result<Vec<master_certs::M
     master_certs::distill_master_certificates(&master_certs)
 }
 
-pub fn handle_mock(mrz: Option<String>) -> Result<()> {
+pub fn handle_mock(mrz: Option<String>, dgs: Option<Vec<u8>>) -> Result<()> {
     let mrz: [u8; 88] = match mrz {
         None => *bundle_mock::MRZ_FRODO,
         Some(s) => {
@@ -62,7 +73,11 @@ pub fn handle_mock(mrz: Option<String>) -> Result<()> {
             arr
         }
     };
-    let bundle = bundle_mock::mock_verification_bundle(&mrz)?;
+    let dgs_set: BTreeSet<u8> = match dgs {
+        None => BTreeSet::from([1, 2, 3, 11, 12, 14]),
+        Some(dgs) => dgs.into_iter().collect(),
+    };
+    let bundle = bundle_mock::mock_verification_bundle(&mrz, &dgs_set)?;
     bundle.verify().wrap_err("verify mock bundle")?;
     println!("{}", serde_json::to_string_pretty(&bundle).unwrap());
 
@@ -106,6 +121,21 @@ pub fn handle_bundle(masterlist_file: &PathBuf, scan_file: &PathBuf) -> Result<(
     Ok(())
 }
 
+pub fn handle_verify(bundle_file: &PathBuf) -> Result<()> {
+    let bundle_text = fs::read_to_string(bundle_file)?;
+    let bundle: VerificationBundle = serde_json::from_str(&bundle_text)?;
+
+    match bundle.verify() {
+        Ok(()) => {
+            println!("Bundle verification successful!");
+            Ok(())
+        }
+        Err(e) => {
+            bail!("Bundle verification failed: {}", e);
+        }
+    }
+}
+
 pub fn main() -> Result<()> {
     color_eyre::install()?;
     let cli = Cli::parse();
@@ -116,10 +146,11 @@ pub fn main() -> Result<()> {
             println!("{}", serde_json::to_string_pretty(&masterlist)?);
             Ok(())
         }
-        Commands::Mock { mrz } => handle_mock(mrz),
+        Commands::Mock { mrz, dgs } => handle_mock(mrz, dgs),
         Commands::Bundle {
             masterlist_file,
             scan_file,
         } => handle_bundle(&masterlist_file, &scan_file),
+        Commands::Verify { bundle_file } => handle_verify(&bundle_file),
     }
 }
