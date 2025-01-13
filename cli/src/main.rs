@@ -1,15 +1,17 @@
 use clap::{Parser, Subcommand};
 use color_eyre::eyre::{bail, Context, ContextCompat, Result};
+use emrtd_core::{
+    bundle::{self, VerificationBundle},
+    bundle_mock,
+    bundle_verify::Verify,
+    document_components, master_certs,
+};
 use serde::Deserialize;
 use serde_with::{base64::Base64, serde_as};
 use std::collections::BTreeSet;
 use std::fs;
 use std::path::PathBuf;
 use std::{fs::File, io::BufReader};
-use zk_passport_emrtd_lib::bundle::VerificationBundle;
-use zk_passport_emrtd_lib::{
-    bundle, bundle_mock, bundle_verify::Verify, document_components, master_certs,
-};
 
 #[derive(Parser)]
 #[command(version, about, long_about = None)]
