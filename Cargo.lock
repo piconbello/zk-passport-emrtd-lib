@@ -1786,8 +1786,13 @@ dependencies = [
 name = "zk-passport-emrtd"
 version = "0.0.1"
 dependencies = [
+ "color-eyre",
  "emrtd-core",
  "napi",
  "napi-build",
  "napi-derive",
+ "once_cell",
+ "serde",
+ "serde_json",
+ "serde_with",
 ]

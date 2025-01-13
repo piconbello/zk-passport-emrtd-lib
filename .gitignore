@@ -10,8 +10,12 @@ files/
 .idea
 .ropeproject
 .zed
+main.mjs
+!package.json
 
 ########
+
+
 ## Created by https://www.toptal.com/developers/gitignore/api/node
 # Edit at https://www.toptal.com/developers/gitignore?templates=node
 
