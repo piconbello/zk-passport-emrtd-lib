@@ -12,6 +12,7 @@ files/
 .zed
 main.mjs
 !package.json
+!assets/*
 
 ########
 
