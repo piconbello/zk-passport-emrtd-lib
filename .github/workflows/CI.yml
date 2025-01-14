@@ -25,63 +25,121 @@ jobs:
       fail-fast: false
       matrix:
         settings:
+          # macOS x64
           - host: macos-latest
             target: x86_64-apple-darwin
+            setup: |
+              brew install openssl@3
+              echo "OPENSSL_DIR=$(brew --prefix openssl@3)" >> $GITHUB_ENV
             build: yarn build --target x86_64-apple-darwin
+
+          # Windows x64
           - host: windows-latest
-            build: yarn build --target x86_64-pc-windows-msvc
             target: x86_64-pc-windows-msvc
+            setup: |
+              choco install openssl
+              echo "OPENSSL_DIR=C:/Program Files/OpenSSL-Win64" >> $GITHUB_ENV
+            build: yarn build --target x86_64-pc-windows-msvc
+
+          # Windows x86
           - host: windows-latest
+            target: i686-pc-windows-msvc
+            setup: |
+              choco install openssl
+              echo "OPENSSL_DIR=C:/Program Files/OpenSSL-Win64" >> $GITHUB_ENV
             build: |
               yarn build --target i686-pc-windows-msvc
               yarn test
-            target: i686-pc-windows-msvc
+
+          # Linux x64 GNU
           - host: ubuntu-latest
             target: x86_64-unknown-linux-gnu
             docker: ghcr.io/napi-rs/napi-rs/nodejs-rust:lts-debian
-            build: yarn build --target x86_64-unknown-linux-gnu
+            build: |
+              apt-get update && apt-get install -y pkg-config libssl-dev
+              yarn build --target x86_64-unknown-linux-gnu
+
+          # Linux x64 MUSL
           - host: ubuntu-latest
             target: x86_64-unknown-linux-musl
             docker: ghcr.io/napi-rs/napi-rs/nodejs-rust:lts-alpine
-            build: yarn build --target x86_64-unknown-linux-musl
+            build: |
+              apk add --no-cache pkgconfig openssl-dev
+              yarn build --target x86_64-unknown-linux-musl
+
+          # macOS ARM64
           - host: macos-latest
             target: aarch64-apple-darwin
+            setup: |
+              brew install openssl@3
+              echo "OPENSSL_DIR=$(brew --prefix openssl@3)" >> $GITHUB_ENV
             build: yarn build --target aarch64-apple-darwin
+
+          # Linux ARM64 GNU
           - host: ubuntu-latest
             target: aarch64-unknown-linux-gnu
             docker: ghcr.io/napi-rs/napi-rs/nodejs-rust:lts-debian-aarch64
-            build: yarn build --target aarch64-unknown-linux-gnu
+            build: |
+              apt-get update && apt-get install -y pkg-config libssl-dev
+              yarn build --target aarch64-unknown-linux-gnu
+
+          # Linux ARM GNU
           - host: ubuntu-latest
             target: armv7-unknown-linux-gnueabihf
             setup: |
               sudo apt-get update
-              sudo apt-get install gcc-arm-linux-gnueabihf -y
+              sudo apt-get install -y gcc-arm-linux-gnueabihf pkg-config libssl-dev
             build: yarn build --target armv7-unknown-linux-gnueabihf
+
+          # Linux ARM MUSL
           - host: ubuntu-latest
             target: armv7-unknown-linux-musleabihf
-            build: yarn build --target armv7-unknown-linux-musleabihf
+            docker: ghcr.io/napi-rs/napi-rs/nodejs-rust:lts-alpine
+            build: |
+              apk add --no-cache pkgconfig openssl-dev
+              yarn build --target armv7-unknown-linux-musleabihf
+
+          # Android ARM64
           - host: ubuntu-latest
             target: aarch64-linux-android
+            setup: |
+              sudo apt-get update
+              sudo apt-get install -y pkg-config libssl-dev
             build: yarn build --target aarch64-linux-android
+
+          # Android ARM
           - host: ubuntu-latest
             target: armv7-linux-androideabi
+            setup: |
+              sudo apt-get update
+              sudo apt-get install -y pkg-config libssl-dev
             build: yarn build --target armv7-linux-androideabi
+
+          # Linux ARM64 MUSL
           - host: ubuntu-latest
             target: aarch64-unknown-linux-musl
             docker: ghcr.io/napi-rs/napi-rs/nodejs-rust:lts-alpine
-            build: |-
-              set -e &&
-              rustup target add aarch64-unknown-linux-musl &&
+            build: |
+              apk add --no-cache pkgconfig openssl-dev
+              rustup target add aarch64-unknown-linux-musl
               yarn build --target aarch64-unknown-linux-musl
+
+          # Windows ARM64
           - host: windows-latest
             target: aarch64-pc-windows-msvc
+            setup: |
+              choco install openssl
+              echo "OPENSSL_DIR=C:/Program Files/OpenSSL-Win64" >> $GITHUB_ENV
             build: yarn build --target aarch64-pc-windows-msvc
+
+          # Linux RISC-V GNU
           - host: ubuntu-latest
             target: riscv64gc-unknown-linux-gnu
             setup: |
               sudo apt-get update
-              sudo apt-get install gcc-riscv64-linux-gnu -y
+              sudo apt-get install -y gcc-riscv64-linux-gnu pkg-config libssl-dev
             build: yarn build --target riscv64gc-unknown-linux-gnu
+
     name: stable - ${{ matrix.settings.target }} - node@20
     runs-on: ${{ matrix.settings.host }}
     steps:
@@ -165,7 +223,8 @@ jobs:
           environment_variables: DEBUG RUSTUP_IO_THREADS
           shell: bash
           run: |
-            sudo pkg install -y -f curl node libnghttp2 npm
+            sudo pkg install -y -f curl node libnghttp2 npm openssl openssl-devel
+            echo "OPENSSL_DIR=/usr/local" >> $GITHUB_ENV
             sudo npm install -g yarn --ignore-scripts
             curl https://sh.rustup.rs -sSf --output rustup.sh
             sh rustup.sh -y --profile minimal --default-toolchain stable

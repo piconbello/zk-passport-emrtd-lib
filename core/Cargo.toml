@@ -16,7 +16,7 @@ elliptic-curve = { version = "0.13.8", features = ["sec1", "std"] }
 # hex = "0.4.3"
 itertools = "0.13.0"
 k256 = { version = "0.13.4", features = ["ecdsa"] }
-openssl = { version = "0.10.68", features = ["vendored"] }
+openssl = { version = "0.10.68" }
 openssl-sys = "0.9.104"
 # p224 = "0.13.2"
 # p256 = "0.13.2"
