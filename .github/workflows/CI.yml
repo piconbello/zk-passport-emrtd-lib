@@ -28,25 +28,20 @@ jobs:
           # macOS x64
           - host: macos-latest
             target: x86_64-apple-darwin
-            setup: |
-              brew install openssl@3
-              echo "OPENSSL_DIR=$(brew --prefix openssl@3)" >> $GITHUB_ENV
             build: yarn build --target x86_64-apple-darwin
 
           # Windows x64
           - host: windows-latest
             target: x86_64-pc-windows-msvc
             setup: |
-              choco install openssl
-              echo "OPENSSL_DIR=C:/Program Files/OpenSSL-Win64" >> $GITHUB_ENV
+              choco install strawberryperl
             build: yarn build --target x86_64-pc-windows-msvc
 
           # Windows x86
           - host: windows-latest
             target: i686-pc-windows-msvc
             setup: |
-              choco install openssl
-              echo "OPENSSL_DIR=C:/Program Files/OpenSSL-Win64" >> $GITHUB_ENV
+              choco install strawberryperl
             build: |
               yarn build --target i686-pc-windows-msvc
               yarn test
@@ -56,7 +51,7 @@ jobs:
             target: x86_64-unknown-linux-gnu
             docker: ghcr.io/napi-rs/napi-rs/nodejs-rust:lts-debian
             build: |
-              apt-get update && apt-get install -y pkg-config libssl-dev
+              apt-get update && apt-get install -y build-essential perl
               yarn build --target x86_64-unknown-linux-gnu
 
           # Linux x64 MUSL
@@ -64,15 +59,12 @@ jobs:
             target: x86_64-unknown-linux-musl
             docker: ghcr.io/napi-rs/napi-rs/nodejs-rust:lts-alpine
             build: |
-              apk add --no-cache pkgconfig openssl-dev
+              apk add --no-cache build-base perl
               yarn build --target x86_64-unknown-linux-musl
 
           # macOS ARM64
           - host: macos-latest
             target: aarch64-apple-darwin
-            setup: |
-              brew install openssl@3
-              echo "OPENSSL_DIR=$(brew --prefix openssl@3)" >> $GITHUB_ENV
             build: yarn build --target aarch64-apple-darwin
 
           # Linux ARM64 GNU
@@ -80,7 +72,7 @@ jobs:
             target: aarch64-unknown-linux-gnu
             docker: ghcr.io/napi-rs/napi-rs/nodejs-rust:lts-debian-aarch64
             build: |
-              apt-get update && apt-get install -y pkg-config libssl-dev
+              apt-get update && apt-get install -y build-essential perl
               yarn build --target aarch64-unknown-linux-gnu
 
           # Linux ARM GNU
@@ -88,7 +80,7 @@ jobs:
             target: armv7-unknown-linux-gnueabihf
             setup: |
               sudo apt-get update
-              sudo apt-get install -y gcc-arm-linux-gnueabihf pkg-config libssl-dev
+              sudo apt-get install -y gcc-arm-linux-gnueabihf build-essential perl
             build: yarn build --target armv7-unknown-linux-gnueabihf
 
           # Linux ARM MUSL
@@ -96,7 +88,7 @@ jobs:
             target: armv7-unknown-linux-musleabihf
             docker: ghcr.io/napi-rs/napi-rs/nodejs-rust:lts-alpine
             build: |
-              apk add --no-cache pkgconfig openssl-dev
+              apk add --no-cache build-base perl
               yarn build --target armv7-unknown-linux-musleabihf
 
           # Android ARM64
@@ -104,7 +96,7 @@ jobs:
             target: aarch64-linux-android
             setup: |
               sudo apt-get update
-              sudo apt-get install -y pkg-config libssl-dev
+              sudo apt-get install -y build-essential perl
             build: yarn build --target aarch64-linux-android
 
           # Android ARM
@@ -112,7 +104,7 @@ jobs:
             target: armv7-linux-androideabi
             setup: |
               sudo apt-get update
-              sudo apt-get install -y pkg-config libssl-dev
+              sudo apt-get install -y build-essential perl
             build: yarn build --target armv7-linux-androideabi
 
           # Linux ARM64 MUSL
@@ -120,7 +112,7 @@ jobs:
             target: aarch64-unknown-linux-musl
             docker: ghcr.io/napi-rs/napi-rs/nodejs-rust:lts-alpine
             build: |
-              apk add --no-cache pkgconfig openssl-dev
+              apk add --no-cache build-base perl
               rustup target add aarch64-unknown-linux-musl
               yarn build --target aarch64-unknown-linux-musl
 
@@ -128,8 +120,7 @@ jobs:
           - host: windows-latest
             target: aarch64-pc-windows-msvc
             setup: |
-              choco install openssl
-              echo "OPENSSL_DIR=C:/Program Files/OpenSSL-Win64" >> $GITHUB_ENV
+              choco install strawberryperl
             build: yarn build --target aarch64-pc-windows-msvc
 
           # Linux RISC-V GNU
@@ -137,7 +128,7 @@ jobs:
             target: riscv64gc-unknown-linux-gnu
             setup: |
               sudo apt-get update
-              sudo apt-get install -y gcc-riscv64-linux-gnu pkg-config libssl-dev
+              sudo apt-get install -y gcc-riscv64-linux-gnu build-essential perl
             build: yarn build --target riscv64gc-unknown-linux-gnu
 
     name: stable - ${{ matrix.settings.target }} - node@20
@@ -150,7 +141,7 @@ jobs:
         with:
           node-version: 20
           cache: yarn
-      - name: Install
+      - name: Install Rust Toolchain
         uses: dtolnay/rust-toolchain@stable
         if: ${{ !matrix.settings.docker }}
         with:
@@ -170,7 +161,7 @@ jobs:
         if: ${{ matrix.settings.target == 'armv7-unknown-linux-gnueabihf' || matrix.settings.target == 'armv7-unknown-linux-musleabihf' }}
         with:
           version: 0.13.0
-      - name: Setup toolchain
+      - name: Setup build env
         run: ${{ matrix.settings.setup }}
         if: ${{ matrix.settings.setup }}
         shell: bash
@@ -202,7 +193,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: bindings-${{ matrix.settings.target }}
-          path: ${{ env.APP_NAME }}.*.node
+          path: ./*.node
           if-no-files-found: error
   build-freebsd:
     runs-on: macos-13
@@ -223,8 +214,7 @@ jobs:
           environment_variables: DEBUG RUSTUP_IO_THREADS
           shell: bash
           run: |
-            sudo pkg install -y -f curl node libnghttp2 npm openssl openssl-devel
-            echo "OPENSSL_DIR=/usr/local" >> $GITHUB_ENV
+            sudo pkg install -y -f curl node libnghttp2 npm p5-perl gmake gcc pkgconf
             sudo npm install -g yarn --ignore-scripts
             curl https://sh.rustup.rs -sSf --output rustup.sh
             sh rustup.sh -y --profile minimal --default-toolchain stable
@@ -250,7 +240,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: bindings-freebsd
-          path: ${{ env.APP_NAME }}.*.node
+          path: ./*.node
           if-no-files-found: error
   test-macOS-windows-binding:
     name: Test bindings on ${{ matrix.settings.target }} - node@${{ matrix.node }}
@@ -492,7 +482,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: bindings-universal-apple-darwin
-          path: ${{ env.APP_NAME }}.*.node
+          path: ./*.node
           if-no-files-found: error
   publish:
     name: Publish
