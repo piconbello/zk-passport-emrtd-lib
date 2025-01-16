@@ -4,3 +4,4 @@ pub mod bundle_verify;
 pub mod document_components;
 pub mod master_certs;
 pub mod pubkeys;
+pub mod pubkeys_pure;

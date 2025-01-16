@@ -120,6 +120,9 @@ pub fn handle_bundle(masterlist_file: &PathBuf, scan_file: &PathBuf) -> Result<(
     let bundle = bundle::VerificationBundle::bundle(&doc_comps, &masterlist)?;
 
     println!("{}", serde_json::to_string_pretty(&bundle)?);
+
+    bundle.verify().wrap_err("bundle verification error")?;
+
     Ok(())
 }
 

@@ -1,6 +1,7 @@
 use crate::{
     bundle::{Signature, SignatureEC, VerificationBundle},
-    pubkeys::{ClonableBigNum, Pubkey, PubkeyEC},
+    // pubkeys::{ClonableBigNum, Pubkey, PubkeyEC},
+    pubkeys_pure::{AffineCoords, Pubkey, PubkeyEC},
 };
 use base64::{prelude::BASE64_STANDARD, Engine};
 use cms::{cert::x509::attr::Attribute, signed_data::SignedAttributes};
@@ -14,6 +15,7 @@ use digest::{
     const_oid::{AssociatedOid, ObjectIdentifier},
     Digest,
 };
+use num_bigint_dig::BigUint;
 use openssl::{bn::BigNum, nid::Nid};
 use rand::rngs::OsRng;
 use sha2::Sha256;
@@ -213,38 +215,16 @@ fn mock_sign(signed_attrs_der: &[u8]) -> Result<MockSignOutput> {
     let document_signature =
         Signature::EC(SignatureEC::try_from(document_signature_der.as_slice())?);
 
-    // // Convert public keys to our Pubkey format
-    // let csca_pubkey = Pubkey::EC(PubkeyEC {
-    //     curve: Nid::X9_62_PRIME256V1,
-    //     x: BigNum::from_slice(&csca_public_key.to_encoded_point(false).x().unwrap())?.into(),
-    //     y: BigNum::from_slice(&csca_public_key.to_encoded_point(false).y().unwrap())?.into(),
-    // });
-
-    // let ds_pubkey = Pubkey::EC(PubkeyEC {
-    //     curve: Nid::X9_62_PRIME256V1,
-    //     x: BigNum::from_slice(&ds_public_key.to_encoded_point(false).x().unwrap())?.into(),
-    //     y: BigNum::from_slice(&ds_public_key.to_encoded_point(false).y().unwrap())?.into(),
-    // });
     // Convert public keys to our Pubkey format
-    let csca_pubkey = Pubkey::EC(PubkeyEC {
-        curve: Nid::SECP256K1,
-        x: ClonableBigNum::from(BigNum::from_slice(
-            csca_public_key.to_encoded_point(false).x().unwrap(),
-        )?),
-        y: ClonableBigNum::from(BigNum::from_slice(
-            csca_public_key.to_encoded_point(false).y().unwrap(),
-        )?),
-    });
+    let csca_pubkey = Pubkey::EC(PubkeyEC::K256(AffineCoords {
+        x: BigUint::from_bytes_be(csca_public_key.to_encoded_point(false).x().unwrap()),
+        y: BigUint::from_bytes_be(csca_public_key.to_encoded_point(false).y().unwrap()),
+    }));
 
-    let ds_pubkey = Pubkey::EC(PubkeyEC {
-        curve: Nid::SECP256K1,
-        x: ClonableBigNum::from(BigNum::from_slice(
-            ds_public_key.to_encoded_point(false).x().unwrap(),
-        )?),
-        y: ClonableBigNum::from(BigNum::from_slice(
-            ds_public_key.to_encoded_point(false).y().unwrap(),
-        )?),
-    });
+    let ds_pubkey = Pubkey::EC(PubkeyEC::K256(AffineCoords {
+        x: BigUint::from_bytes_be(ds_public_key.to_encoded_point(false).x().unwrap()),
+        y: BigUint::from_bytes_be(ds_public_key.to_encoded_point(false).y().unwrap()),
+    }));
 
     Ok(MockSignOutput {
         document_signature,

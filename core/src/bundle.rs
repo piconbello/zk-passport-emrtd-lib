@@ -1,5 +1,7 @@
+use std::ops::Add;
+
 use color_eyre::{
-    eyre::{eyre, ContextCompat, Error},
+    eyre::{eyre, Context, ContextCompat, Error},
     Result,
 };
 use const_oid::{
@@ -14,6 +16,9 @@ use const_oid::{
     ObjectIdentifier,
 };
 use der::{Encode, Sequence};
+use ecdsa::der::{MaxOverhead, MaxSize};
+use elliptic_curve::generic_array;
+use elliptic_curve::{sec1::ModulusSize, FieldBytes};
 use serde::{Deserialize, Serialize};
 use serde_with::{base64::Base64, serde_as};
 use smallvec::SmallVec;
@@ -21,7 +26,7 @@ use smallvec::SmallVec;
 use crate::{
     document_components::{extract_authority_identifier_key, DocumentComponents},
     master_certs::MasterCert,
-    pubkeys::Pubkey,
+    pubkeys_pure::Pubkey,
 };
 
 #[serde_as]
@@ -59,9 +64,9 @@ pub enum Signature {
 #[derive(Debug, Serialize, Deserialize)]
 pub struct SignatureEC {
     #[serde_as(as = "Base64")]
-    r: Vec<u8>,
+    pub r: Vec<u8>,
     #[serde_as(as = "Base64")]
-    s: Vec<u8>,
+    pub s: Vec<u8>,
 }
 
 #[derive(Sequence)]
@@ -79,6 +84,35 @@ impl TryFrom<&[u8]> for SignatureEC {
             r: signature_asn1.r.as_bytes().into(),
             s: signature_asn1.s.as_bytes().into(),
         })
+    }
+}
+
+impl<C> TryInto<ecdsa::Signature<C>> for &SignatureEC
+where
+    C: elliptic_curve::CurveArithmetic + elliptic_curve::PrimeCurve,
+    C::FieldBytesSize: ModulusSize,
+    MaxSize<C>: generic_array::ArrayLength<u8>,
+    <<C as elliptic_curve::Curve>::FieldBytesSize as Add>::Output:
+        Add<MaxOverhead> + generic_array::ArrayLength<u8>,
+{
+    type Error = Error;
+
+    fn try_into(self) -> Result<ecdsa::Signature<C>, Self::Error> {
+        // let r_bytes = FieldBytes::<C>::from_slice(&self.r);
+        // let s_bytes = FieldBytes::<C>::from_slice(&self.s);
+
+        // let r_array = generic_array::GenericArray::from_slice(&self.r);
+        // let s_array = generic_array::GenericArray::from_slice(&self.s);
+
+        // ecdsa::Signature::<C>::from_scalars(
+        //     // generic_array::GenericArray::clone_from_slice(&r_bytes),
+        //     // generic_array::GenericArray::clone_from_slice(&s_bytes),
+        //     r_array, s_array,
+        // )
+        // .wrap_err("Failed to create ECDSA signature")
+        let asn1_sig = Asn1Signature::try_from(self)?;
+        let der_bytes = asn1_sig.to_der()?;
+        ecdsa::Signature::<C>::from_der(&der_bytes).wrap_err("Failed to create ECDSA signature")
     }
 }
 

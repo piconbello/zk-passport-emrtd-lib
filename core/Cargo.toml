@@ -15,16 +15,17 @@ ecdsa = { version = "0.16.9", features = ["der", "std"] }
 elliptic-curve = { version = "0.13.8", features = ["sec1", "std"] }
 # hex = "0.4.3"
 itertools = "0.13.0"
-k256 = { version = "0.13.4", features = ["ecdsa"] }
+k256 = "0.13"
+num-bigint-dig = { version = "0.8.4", features = ["serde"] }
 openssl = { version = "0.10.68", features = ["vendored"] }
 openssl-sys = { version = "0.9.104", features = ["vendored"] }
-# p224 = "0.13.2"
-# p256 = "0.13.2"
+p224 = "0.13"
+p256 = "0.13"
 p384 = "0.13"
-# p521 = { version = "0.13.3", features = ["ecdsa"] }
+p521 = "0.13.3"
 # pem = "3.0.4"
 rand = "0.8.5"
-rsa = "0.9.6"
+rsa = { version = "0.9.6", features = ["pkcs5", "serde"] }
 serde = { version = "1.0.215", features = ["derive"] }
 serde_json = "1.0.132"
 serde_with = { version = "3.11.0", features = ["json", "base64"] }
