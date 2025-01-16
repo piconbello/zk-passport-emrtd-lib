@@ -212,13 +212,19 @@ jobs:
         with:
           name: bindings-${{ matrix.settings.target }}
           path: |
-            ./*.node
-            ./.*.node
-            /build/*.node
-            /build/.*.node
-            ${{ github.workspace }}/*.node
-            ${{ github.workspace }}/.*.node
+            *.node
+            .*.node
+            ..*.node
           if-no-files-found: error
+      - name: Debug file location
+        shell: bash
+        run: |
+          echo "Current directory:"
+          pwd
+          echo "Files in current directory:"
+          ls -la
+          echo "Hidden files in current directory:"
+          ls -la .*node || true
   build-freebsd:
     runs-on: macos-13
     name: Build FreeBSD
