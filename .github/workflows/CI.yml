@@ -35,6 +35,7 @@ jobs:
             target: x86_64-pc-windows-msvc
             setup: |
               choco install strawberryperl
+              choco install make
             build: yarn build --target x86_64-pc-windows-msvc
 
           # Windows x86
@@ -42,6 +43,7 @@ jobs:
             target: i686-pc-windows-msvc
             setup: |
               choco install strawberryperl
+              choco install make
             build: |
               yarn build --target i686-pc-windows-msvc
               yarn test
@@ -121,6 +123,7 @@ jobs:
             target: aarch64-pc-windows-msvc
             setup: |
               choco install strawberryperl
+              choco install make
             build: yarn build --target aarch64-pc-windows-msvc
 
           # Linux RISC-V GNU
