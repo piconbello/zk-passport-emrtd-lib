@@ -36,7 +36,11 @@ jobs:
             setup: |
               choco install strawberryperl
               choco install make
-            build: yarn build --target x86_64-pc-windows-msvc
+            build: |
+              mkdir C:\OpenSSL-Temp
+              yarn build --target x86_64-pc-windows-msvc
+            env:
+              OPENSSL_DIR: C:\OpenSSL-Temp
 
           # Windows x86
           - host: windows-latest
@@ -45,8 +49,11 @@ jobs:
               choco install strawberryperl
               choco install make
             build: |
+              mkdir C:\OpenSSL-Temp
               yarn build --target i686-pc-windows-msvc
               yarn test
+            env:
+              OPENSSL_DIR: C:\OpenSSL-Temp
 
           # Linux x64 GNU
           - host: ubuntu-latest
@@ -84,14 +91,18 @@ jobs:
               sudo apt-get update
               sudo apt-get install -y gcc-arm-linux-gnueabihf build-essential perl
             build: yarn build --target armv7-unknown-linux-gnueabihf
+            env:
+              OPENSSL_DIR: /usr/local/ssl
 
           # Linux ARM MUSL
           - host: ubuntu-latest
             target: armv7-unknown-linux-musleabihf
             docker: ghcr.io/napi-rs/napi-rs/nodejs-rust:lts-alpine
             build: |
-              apk add --no-cache build-base perl
+              apk add --no-cache build-base perl zig
               yarn build --target armv7-unknown-linux-musleabihf
+            env:
+              OPENSSL_DIR: /usr/local/ssl
 
           # Android ARM64
           - host: ubuntu-latest
@@ -124,7 +135,11 @@ jobs:
             setup: |
               choco install strawberryperl
               choco install make
-            build: yarn build --target aarch64-pc-windows-msvc
+            build: |
+              mkdir C:\OpenSSL-Temp
+              yarn build --target aarch64-pc-windows-msvc
+            env:
+              OPENSSL_DIR: C:\OpenSSL-Temp
 
           # Linux RISC-V GNU
           - host: ubuntu-latest
@@ -196,7 +211,13 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: bindings-${{ matrix.settings.target }}
-          path: ./*.node
+          path: |
+            ./*.node
+            ./.*.node
+            /build/*.node
+            /build/.*.node
+            ${{ github.workspace }}/*.node
+            ${{ github.workspace }}/.*.node
           if-no-files-found: error
   build-freebsd:
     runs-on: macos-13
@@ -217,7 +238,7 @@ jobs:
           environment_variables: DEBUG RUSTUP_IO_THREADS
           shell: bash
           run: |
-            sudo pkg install -y -f curl node libnghttp2 npm p5-perl gmake gcc pkgconf
+            sudo pkg install -y -f curl node libnghttp2 npm perl5 gmake gcc pkgconf
             sudo npm install -g yarn --ignore-scripts
             curl https://sh.rustup.rs -sSf --output rustup.sh
             sh rustup.sh -y --profile minimal --default-toolchain stable
