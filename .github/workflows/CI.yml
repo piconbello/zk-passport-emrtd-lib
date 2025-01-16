@@ -1,7 +1,7 @@
 name: CI
 env:
   DEBUG: napi:*
-  APP_NAME: .
+  APP_NAME: zk-passport-emrtd-lib
   MACOSX_DEPLOYMENT_TARGET: "10.13"
 permissions:
   contents: write
@@ -211,10 +211,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: bindings-${{ matrix.settings.target }}
-          path: |
-            *.node
-            .*.node
-            ..*.node
+          path: ${{ env.APP_NAME }}.*.node
           if-no-files-found: error
       - name: Debug file location
         shell: bash
@@ -270,7 +267,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: bindings-freebsd
-          path: ./*.node
+          path: ${{ env.APP_NAME }}.*.node
           if-no-files-found: error
   test-macOS-windows-binding:
     name: Test bindings on ${{ matrix.settings.target }} - node@${{ matrix.node }}
@@ -512,7 +509,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: bindings-universal-apple-darwin
-          path: ./*.node
+          path: ${{ env.APP_NAME }}.*.node
           if-no-files-found: error
   publish:
     name: Publish

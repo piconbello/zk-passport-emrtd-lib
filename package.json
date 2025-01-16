@@ -4,7 +4,7 @@
   "main": "index.js",
   "types": "index.d.ts",
   "napi": {
-    "name": ".",
+    "name": "zk-passport-emrtd-lib",
     "triples": {
       "additional": [
         "aarch64-apple-darwin",
