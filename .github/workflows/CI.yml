@@ -25,150 +25,107 @@ jobs:
       fail-fast: false
       matrix:
         settings:
-          # # macOS x64
-          # - host: macos-latest
-          #   shell: bash
-          #   target: x86_64-apple-darwin
-          #   build: yarn build --target x86_64-apple-darwin
+          # macOS x64
+          - host: macos-latest
+            shell: bash
+            target: x86_64-apple-darwin
+            build: yarn build --target x86_64-apple-darwin
 
           # Windows x64
-          # - host: windows-latest
-          #   target: x86_64-pc-windows-msvc
-          #   setup: |
-          #     choco install strawberryperl
-          #     choco install make
-          #   build: |
-          #     $perlPath = (Get-Command perl).Path
-          #     echo "PERL=$perlPath" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
-          #     echo "OPENSSL_SRC_PERL=$perlPath" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
-          #     yarn build --target x86_64-pc-windows-msvc
+          - host: windows-latest
+            target: x86_64-pc-windows-msvc
+            setup: |
+              choco install strawberryperl
+              choco install make
+            build: |
+              $perlPath = (Get-Command perl).Path
+              echo "PERL=$perlPath" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+              echo "OPENSSL_SRC_PERL=$perlPath" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+              yarn build --target x86_64-pc-windows-msvc
 
           # Windows x86
-          # - host: windows-latest
-          #   target: i686-pc-windows-msvc
-          #   setup: |
-          #     choco install strawberryperl
-          #     choco install make
-          #   build: |
-          #     echo "PERL=$((where.exe perl)[0])" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
-          #     echo "OPENSSL_SRC_PERL=$((where.exe perl)[0])" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
-          #     yarn build --target i686-pc-windows-msvc
+          - host: windows-latest
+            target: i686-pc-windows-msvc
+            setup: |
+              choco install strawberryperl
+              choco install make
+            build: |
+              echo "PERL=$((where.exe perl)[0])" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+              echo "OPENSSL_SRC_PERL=$((where.exe perl)[0])" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+              yarn build --target i686-pc-windows-msvc
 
-          # # Linux x64 GNU
-          # - host: ubuntu-latest
-          #   target: x86_64-unknown-linux-gnu
-          #   docker: ghcr.io/napi-rs/napi-rs/nodejs-rust:lts-debian
-          #   build: |
-          #     apt-get update && apt-get install -y build-essential perl
-          #     yarn build --target x86_64-unknown-linux-gnu
-
-          # # Linux x64 MUSL
-          # - host: ubuntu-latest
-          #   target: x86_64-unknown-linux-musl
-          #   docker: ghcr.io/napi-rs/napi-rs/nodejs-rust:lts-alpine
-          #   build: |
-          #     apk add --no-cache build-base perl
-          #     yarn build --target x86_64-unknown-linux-musl
-
-          # # macOS ARM64
-          # - host: macos-latest
-          #   target: aarch64-apple-darwin
-          #   build: yarn build --target aarch64-apple-darwin
-
-          # # Linux ARM64 GNU
-          # - host: ubuntu-latest
-          #   target: aarch64-unknown-linux-gnu
-          #   docker: ghcr.io/napi-rs/napi-rs/nodejs-rust:lts-debian-aarch64
-          #   build: |
-          #     apt-get update && apt-get install -y build-essential perl
-          #     yarn build --target aarch64-unknown-linux-gnu
-
-          # Linux ARM GNU
+          # Linux x64 GNU
           - host: ubuntu-latest
-            target: armv7-unknown-linux-gnueabihf
+            target: x86_64-unknown-linux-gnu
+            docker: ghcr.io/napi-rs/napi-rs/nodejs-rust:lts-debian
+            build: |
+              apt-get update && apt-get install -y build-essential perl
+              yarn build --target x86_64-unknown-linux-gnu
+
+          # Linux x64 MUSL
+          - host: ubuntu-latest
+            target: x86_64-unknown-linux-musl
+            docker: ghcr.io/napi-rs/napi-rs/nodejs-rust:lts-alpine
+            build: |
+              apk add --no-cache build-base perl
+              yarn build --target x86_64-unknown-linux-musl
+
+          # macOS ARM64
+          - host: macos-latest
+            target: aarch64-apple-darwin
+            build: yarn build --target aarch64-apple-darwin
+
+          # Linux ARM64 GNU
+          - host: ubuntu-latest
+            target: aarch64-unknown-linux-gnu
+            docker: ghcr.io/napi-rs/napi-rs/nodejs-rust:lts-debian-aarch64
+            build: |
+              apt-get update && apt-get install -y build-essential perl
+              yarn build --target aarch64-unknown-linux-gnu
+
+          # Android ARM64
+          - host: ubuntu-latest
+            target: aarch64-linux-android
             setup: |
               sudo apt-get update
-              sudo dpkg --add-architecture armhf
-              # Add architecture specification to sources
-              sudo sed -i 's/deb http/deb [arch=amd64,i386] http/g' /etc/apt/sources.list
-              # Add armhf specific sources
-              sudo bash -c 'echo "deb [arch=armhf] http://ports.ubuntu.com/ubuntu-ports $(lsb_release -cs) main restricted universe multiverse" >> /etc/apt/sources.list'
-              sudo bash -c 'echo "deb [arch=armhf] http://ports.ubuntu.com/ubuntu-ports $(lsb_release -cs)-updates main restricted universe multiverse" >> /etc/apt/sources.list'
-              sudo apt-get update
-              sudo apt-get install -y build-essential perl libssl-dev:armhf
+              sudo apt-get install -y build-essential perl
+            build: yarn build --target aarch64-linux-android
 
-              # sudo apt-get update
-              # sudo dpkg --add-architecture armhf
-              # sudo apt-get update
-              # sudo apt-get install -y build-essential perl libssl-dev:armhf
-            build: |
-              export OPENSSL_STATIC=1
-              export OPENSSL_NO_VENDOR=1
-              export OPENSSL_DIR=/usr
-              export OPENSSL_LIB_DIR=/usr/lib/arm-linux-gnueabihf
-              export OPENSSL_INCLUDE_DIR=/usr/include
-              export PKG_CONFIG_PATH=/usr/lib/arm-linux-gnueabihf/pkgconfig
-              export PKG_CONFIG_ALLOW_CROSS=1
-              yarn build --target armv7-unknown-linux-gnueabihf
-
-          # Linux ARM MUSL
+          # Android ARM
           - host: ubuntu-latest
-            target: armv7-unknown-linux-musleabihf
+            target: armv7-linux-androideabi
             setup: |
               sudo apt-get update
-              sudo sed -i '/^deb http:\/\/archive\.ubuntu\.com\/ubuntu\/ noble/ s/^deb /deb [ arch=amd64,i386 ] /' /etc/apt/sources.list
-              sudo apt-get update
-              sudo dpkg --add-architecture armhf
-              sudo apt-get update
-              sudo apt-get install -y build-essential perl libssl-dev:armhf
+              sudo apt-get install -y build-essential perl
+            build: yarn build --target armv7-linux-androideabi
+
+          # Linux ARM64 MUSL
+          - host: ubuntu-latest
+            target: aarch64-unknown-linux-musl
+            docker: ghcr.io/napi-rs/napi-rs/nodejs-rust:lts-alpine
             build: |
-              export OPENSSL_STATIC=1
-              export OPENSSL_NO_VENDOR=1
-              yarn build --target armv7-unknown-linux-musleabihf
-
-          # # Android ARM64
-          # - host: ubuntu-latest
-          #   target: aarch64-linux-android
-          #   setup: |
-          #     sudo apt-get update
-          #     sudo apt-get install -y build-essential perl
-          #   build: yarn build --target aarch64-linux-android
-
-          # # Android ARM
-          # - host: ubuntu-latest
-          #   target: armv7-linux-androideabi
-          #   setup: |
-          #     sudo apt-get update
-          #     sudo apt-get install -y build-essential perl
-          #   build: yarn build --target armv7-linux-androideabi
-
-          # # Linux ARM64 MUSL
-          # - host: ubuntu-latest
-          #   target: aarch64-unknown-linux-musl
-          #   docker: ghcr.io/napi-rs/napi-rs/nodejs-rust:lts-alpine
-          #   build: |
-          #     apk add --no-cache build-base perl
-          #     rustup target add aarch64-unknown-linux-musl
-          #     yarn build --target aarch64-unknown-linux-musl
+              apk add --no-cache build-base perl
+              rustup target add aarch64-unknown-linux-musl
+              yarn build --target aarch64-unknown-linux-musl
 
           # Windows ARM64
-          # - host: windows-latest
-          #   target: aarch64-pc-windows-msvc
-          #   setup: |
-          #     choco install strawberryperl
-          #     choco install make
-          #   build: |
-          #     echo "PERL=$((where.exe perl)[0])" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
-          #     echo "OPENSSL_SRC_PERL=$((where.exe perl)[0])" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
-          #     yarn build --target aarch64-pc-windows-msvc
+          - host: windows-latest
+            target: aarch64-pc-windows-msvc
+            setup: |
+              choco install strawberryperl
+              choco install make
+            build: |
+              echo "PERL=$((where.exe perl)[0])" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+              echo "OPENSSL_SRC_PERL=$((where.exe perl)[0])" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+              yarn build --target aarch64-pc-windows-msvc
 
-          # # Linux RISC-V GNU
-          # - host: ubuntu-latest
-          #   target: riscv64gc-unknown-linux-gnu
-          #   setup: |
-          #     sudo apt-get update
-          #     sudo apt-get install -y gcc-riscv64-linux-gnu build-essential perl
-          #   build: yarn build --target riscv64gc-unknown-linux-gnu
+          # Linux RISC-V GNU
+          - host: ubuntu-latest
+            target: riscv64gc-unknown-linux-gnu
+            setup: |
+              sudo apt-get update
+              sudo apt-get install -y gcc-riscv64-linux-gnu build-essential perl
+            build: yarn build --target riscv64gc-unknown-linux-gnu
 
     name: stable - ${{ matrix.settings.target }} - node@20
     runs-on: ${{ matrix.settings.host }}
