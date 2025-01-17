@@ -27,12 +27,14 @@ jobs:
         settings:
           # # macOS x64
           # - host: macos-latest
+          #   shell: bash
           #   target: x86_64-apple-darwin
           #   build: yarn build --target x86_64-apple-darwin
 
           # Windows x64
           - host: windows-latest
             target: x86_64-pc-windows-msvc
+            shell: pwsh
             setup: |
               choco install strawberryperl
               choco install make
@@ -45,6 +47,7 @@ jobs:
           # Windows x86
           - host: windows-latest
             target: i686-pc-windows-msvc
+            shell: pwsh
             setup: |
               choco install strawberryperl
               choco install make
@@ -60,6 +63,7 @@ jobs:
           # # Linux x64 GNU
           # - host: ubuntu-latest
           #   target: x86_64-unknown-linux-gnu
+          #   shell: bash
           #   docker: ghcr.io/napi-rs/napi-rs/nodejs-rust:lts-debian
           #   build: |
           #     apt-get update && apt-get install -y build-essential perl
@@ -68,6 +72,7 @@ jobs:
           # # Linux x64 MUSL
           # - host: ubuntu-latest
           #   target: x86_64-unknown-linux-musl
+          #   shell: bash
           #   docker: ghcr.io/napi-rs/napi-rs/nodejs-rust:lts-alpine
           #   build: |
           #     apk add --no-cache build-base perl
@@ -76,11 +81,13 @@ jobs:
           # # macOS ARM64
           # - host: macos-latest
           #   target: aarch64-apple-darwin
+          #   shell: bash
           #   build: yarn build --target aarch64-apple-darwin
 
           # # Linux ARM64 GNU
           # - host: ubuntu-latest
           #   target: aarch64-unknown-linux-gnu
+          #   shell: bash
           #   docker: ghcr.io/napi-rs/napi-rs/nodejs-rust:lts-debian-aarch64
           #   build: |
           #     apt-get update && apt-get install -y build-essential perl
@@ -89,6 +96,7 @@ jobs:
           # Linux ARM GNU
           - host: ubuntu-latest
             target: armv7-unknown-linux-gnueabihf
+            shell: bash
             setup: |
               sudo apt-get update
               sudo apt-get install -y gcc-arm-linux-gnueabihf build-essential perl
@@ -101,6 +109,7 @@ jobs:
           # Linux ARM MUSL
           - host: ubuntu-latest
             target: armv7-unknown-linux-musleabihf
+            shell: bash
             docker: ghcr.io/napi-rs/napi-rs/nodejs-rust:lts-alpine
             setup: |
               sudo apt-get install -y build-essential perl
@@ -111,6 +120,7 @@ jobs:
           # # Android ARM64
           # - host: ubuntu-latest
           #   target: aarch64-linux-android
+          #   shell: bash
           #   setup: |
           #     sudo apt-get update
           #     sudo apt-get install -y build-essential perl
@@ -119,6 +129,7 @@ jobs:
           # # Android ARM
           # - host: ubuntu-latest
           #   target: armv7-linux-androideabi
+          #   shell: bash
           #   setup: |
           #     sudo apt-get update
           #     sudo apt-get install -y build-essential perl
@@ -127,6 +138,7 @@ jobs:
           # # Linux ARM64 MUSL
           # - host: ubuntu-latest
           #   target: aarch64-unknown-linux-musl
+          #   shell: bash
           #   docker: ghcr.io/napi-rs/napi-rs/nodejs-rust:lts-alpine
           #   build: |
           #     apk add --no-cache build-base perl
@@ -136,6 +148,7 @@ jobs:
           # Windows ARM64
           - host: windows-latest
             target: aarch64-pc-windows-msvc
+            shell: pwsh
             setup: |
               choco install strawberryperl
               choco install make
@@ -147,6 +160,7 @@ jobs:
           # # Linux RISC-V GNU
           # - host: ubuntu-latest
           #   target: riscv64gc-unknown-linux-gnu
+          #   shell: bash
           #   setup: |
           #     sudo apt-get update
           #     sudo apt-get install -y gcc-riscv64-linux-gnu build-essential perl
@@ -183,23 +197,23 @@ jobs:
         with:
           version: 0.13.0
 
-      - name: Setup build env (Windows)
-        run: ${{ matrix.settings.setup }}
-        if: ${{ matrix.settings.setup && contains(matrix.settings.target, 'windows') }}
-        shell: pwsh
-
-      - name: Setup build env (Unix)
-        run: ${{ matrix.settings.setup }}
-        if: ${{ matrix.settings.setup && !contains(matrix.settings.target, 'windows') }}
-        shell: bash
-      # - name: Setup build env
+      # - name: Setup build env (Windows)
       #   run: ${{ matrix.settings.setup }}
-      #   if: ${{ matrix.settings.setup }}
-      #   shell: ${{ (matrix.settings.target == 'x86_64-pc-windows-msvc' || matrix.settings.target == 'i686-pc-windows-msvc' || matrix.settings.target == 'aarch64-pc-windows-msvc') && 'pwsh' || 'bash' }}
+      #   if: ${{ matrix.settings.setup && contains(matrix.settings.target, 'windows') }}
+      #   shell: pwsh
+
+      # - name: Setup build env (Unix)
+      #   run: ${{ matrix.settings.setup }}
+      #   if: ${{ matrix.settings.setup && !contains(matrix.settings.target, 'windows') }}
+      #   shell: bash
+      - name: Setup build env
+        run: ${{ matrix.settings.setup }}
+        if: ${{ matrix.settings.setup }}
+        shell: ${{ matrix.settings.shell }}
       - name: Setup node x86
         if: matrix.settings.target == 'i686-pc-windows-msvc'
         run: yarn config set supportedArchitectures.cpu "ia32"
-        shell: bash
+        shell: ${{ matrix.settings.shell }}
       - name: Install dependencies
         run: yarn install
       - name: Setup node x86
@@ -219,7 +233,7 @@ jobs:
       - name: Build
         run: ${{ matrix.settings.build }}
         if: ${{ !matrix.settings.docker }}
-        shell: bash
+        shell: ${{ matrix.settings.shell }}
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
