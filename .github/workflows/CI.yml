@@ -88,17 +88,27 @@ jobs:
             target: armv7-unknown-linux-gnueabihf
             setup: |
               sudo apt-get update
-              sudo apt-get install -y build-essential perl libssl-dev
+              sudo dpkg --add-architecture armhf
+              sudo apt-get update
+              sudo apt-get install -y build-essential perl libssl-dev:armhf
             build: |
               export OPENSSL_STATIC=1
               export OPENSSL_NO_VENDOR=1
+              export OPENSSL_DIR=/usr
+              export OPENSSL_LIB_DIR=/usr/lib/arm-linux-gnueabihf
+              export OPENSSL_INCLUDE_DIR=/usr/include
+              export PKG_CONFIG_PATH=/usr/lib/arm-linux-gnueabihf/pkgconfig
+              export PKG_CONFIG_ALLOW_CROSS=1
               yarn build --target armv7-unknown-linux-gnueabihf
 
           # Linux ARM MUSL
           - host: ubuntu-latest
             target: armv7-unknown-linux-musleabihf
             setup: |
-              sudo apt-get install -y build-essential perl libssl-dev
+              sudo apt-get update
+              sudo dpkg --add-architecture armhf
+              sudo apt-get update
+              sudo apt-get install -y build-essential perl libssl-dev:armhf
             build: |
               export OPENSSL_STATIC=1
               export OPENSSL_NO_VENDOR=1
