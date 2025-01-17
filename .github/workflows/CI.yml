@@ -33,13 +33,13 @@ jobs:
           # Windows x64
           - host: windows-latest
             target: x86_64-pc-windows-msvc
-            shell: pwsh
             setup: |
               choco install strawberryperl
               choco install make
             build: |
-              echo "PERL=$((where.exe perl)[0])" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
-              echo "OPENSSL_SRC_PERL=$((where.exe perl)[0])" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+              $perlPath = (Get-Command perl).Path
+              echo "PERL=$perlPath" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+              echo "OPENSSL_SRC_PERL=$perlPath" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
               yarn build --target x86_64-pc-windows-msvc
 
           # Windows x86
@@ -94,6 +94,8 @@ jobs:
               sudo apt-get install -y gcc-arm-linux-gnueabihf build-essential perl
               rustup target add armv7-unknown-linux-gnueabihf
             build: |
+              export OPENSSL_DIR="/usr"
+              export OPENSSLDIR='"/usr/local/ssl"'
               yarn build --target armv7-unknown-linux-gnueabihf
 
           # Linux ARM MUSL
@@ -101,7 +103,7 @@ jobs:
             target: armv7-unknown-linux-musleabihf
             docker: ghcr.io/napi-rs/napi-rs/nodejs-rust:lts-alpine
             setup: |
-              sudo apt-get install -y build-essential perl zig
+              sudo apt-get install -y build-essential perl
               rustup target add armv7-unknown-linux-musleabihf
             build: |
               yarn build --target armv7-unknown-linux-musleabihf
@@ -138,12 +140,9 @@ jobs:
               choco install strawberryperl
               choco install make
             build: |
-              mkdir C:\OpenSSL-Temp
               echo "PERL=$((where.exe perl)[0])" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
               echo "OPENSSL_SRC_PERL=$((where.exe perl)[0])" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
               yarn build --target aarch64-pc-windows-msvc
-            env:
-              OPENSSL_DIR: C:\OpenSSL-Temp
 
           # # Linux RISC-V GNU
           # - host: ubuntu-latest
@@ -183,10 +182,20 @@ jobs:
         if: ${{ matrix.settings.target == 'armv7-unknown-linux-gnueabihf' || matrix.settings.target == 'armv7-unknown-linux-musleabihf' }}
         with:
           version: 0.13.0
-      - name: Setup build env
+
+      - name: Setup build env (Windows)
         run: ${{ matrix.settings.setup }}
-        if: ${{ matrix.settings.setup }}
+        if: ${{ matrix.settings.setup && contains(matrix.settings.target, 'windows') }}
+        shell: pwsh
+
+      - name: Setup build env (Unix)
+        run: ${{ matrix.settings.setup }}
+        if: ${{ matrix.settings.setup && !contains(matrix.settings.target, 'windows') }}
         shell: bash
+      # - name: Setup build env
+      #   run: ${{ matrix.settings.setup }}
+      #   if: ${{ matrix.settings.setup }}
+      #   shell: ${{ (matrix.settings.target == 'x86_64-pc-windows-msvc' || matrix.settings.target == 'i686-pc-windows-msvc' || matrix.settings.target == 'aarch64-pc-windows-msvc') && 'pwsh' || 'bash' }}
       - name: Setup node x86
         if: matrix.settings.target == 'i686-pc-windows-msvc'
         run: yarn config set supportedArchitectures.cpu "ia32"
@@ -227,19 +236,19 @@ jobs:
           echo "Hidden files in current directory:"
           ls -la .*node || true
   build-freebsd:
-    runs-on: macos-13
+    runs-on: ubuntu-latest
     name: Build FreeBSD
     steps:
       - uses: actions/checkout@v4
       - name: Build
         id: build
-        uses: cross-platform-actions/action@v0.24.0
+        uses: cross-platform-actions/action@v0.26.0
         env:
           DEBUG: napi:*
           RUSTUP_IO_THREADS: 1
         with:
           operating_system: freebsd
-          version: "13.4"
+          version: "14.2"
           memory: 8G
           cpu_count: 3
           environment_variables: DEBUG RUSTUP_IO_THREADS
