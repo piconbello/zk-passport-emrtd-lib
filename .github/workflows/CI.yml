@@ -50,13 +50,9 @@ jobs:
               choco install strawberryperl
               choco install make
             build: |
-              mkdir C:\OpenSSL-Temp
               echo "PERL=$((where.exe perl)[0])" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
               echo "OPENSSL_SRC_PERL=$((where.exe perl)[0])" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
               yarn build --target i686-pc-windows-msvc
-              # yarn test
-            env:
-              OPENSSL_DIR: C:\OpenSSL-Temp
 
           # # Linux x64 GNU
           # - host: ubuntu-latest
@@ -92,22 +88,15 @@ jobs:
             target: armv7-unknown-linux-gnueabihf
             setup: |
               sudo apt-get update
-              sudo apt-get install -y gcc-arm-linux-gnueabihf build-essential perl
-              rustup target add armv7-unknown-linux-gnueabihf
-            build: |
-              export OPENSSL_DIR="/usr"
-              export OPENSSLDIR='"/usr/local/ssl"'
-              yarn build --target armv7-unknown-linux-gnueabihf
+              sudo apt-get install -y build-essential perl libssl-dev
+            build: yarn build --target armv7-unknown-linux-gnueabihf
 
           # Linux ARM MUSL
           - host: ubuntu-latest
             target: armv7-unknown-linux-musleabihf
-            docker: ghcr.io/napi-rs/napi-rs/nodejs-rust:lts-alpine
             setup: |
-              sudo apt-get install -y build-essential perl
-              rustup target add armv7-unknown-linux-musleabihf
-            build: |
-              yarn build --target armv7-unknown-linux-musleabihf
+              sudo apt-get install -y build-essential perl libssl-dev
+            build: yarn build --target armv7-unknown-linux-musleabihf
 
           # # Android ARM64
           # - host: ubuntu-latest
