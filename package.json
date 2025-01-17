@@ -1,6 +1,6 @@
 {
   "name": "zk-passport-emrtd-lib",
-  "version": "0.1.2",
+  "version": "0.1.4",
   "main": "index.js",
   "types": "index.d.ts",
   "napi": {
@@ -12,8 +12,6 @@
         "aarch64-unknown-linux-gnu",
         "aarch64-unknown-linux-musl",
         "aarch64-pc-windows-msvc",
-        "armv7-unknown-linux-gnueabihf",
-        "armv7-unknown-linux-musleabihf",
         "x86_64-unknown-linux-musl",
         "x86_64-unknown-freebsd",
         "i686-pc-windows-msvc",
@@ -24,10 +22,6 @@
     }
   },
   "license": "Apache-2.0",
-  "devDependencies": {
-    "@napi-rs/cli": "^2.18.4",
-    "ava": "^6.0.1"
-  },
   "ava": {
     "timeout": "3m"
   },
@@ -44,7 +38,9 @@
     "version": "napi version"
   },
   "description": "To parse the raw passport scans to be proved later",
-  "dependencies": {
+  "devDependencies": {
+    "@napi-rs/cli": "^2.18.4",
+    "ava": "^6.0.1",
     "abbrev": "^2.0.0",
     "acorn": "^8.14.0",
     "acorn-import-attributes": "^1.9.5",

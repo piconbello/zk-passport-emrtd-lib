@@ -31,3 +31,4 @@ src
 common.ts
 cert.ts
 build.rs
+main.mjs
