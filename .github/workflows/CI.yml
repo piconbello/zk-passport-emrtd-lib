@@ -89,8 +89,18 @@ jobs:
             setup: |
               sudo apt-get update
               sudo dpkg --add-architecture armhf
+              # Add architecture specification to sources
+              sudo sed -i 's/deb http/deb [arch=amd64,i386] http/g' /etc/apt/sources.list
+              # Add armhf specific sources
+              sudo bash -c 'echo "deb [arch=armhf] http://ports.ubuntu.com/ubuntu-ports $(lsb_release -cs) main restricted universe multiverse" >> /etc/apt/sources.list'
+              sudo bash -c 'echo "deb [arch=armhf] http://ports.ubuntu.com/ubuntu-ports $(lsb_release -cs)-updates main restricted universe multiverse" >> /etc/apt/sources.list'
               sudo apt-get update
               sudo apt-get install -y build-essential perl libssl-dev:armhf
+
+              # sudo apt-get update
+              # sudo dpkg --add-architecture armhf
+              # sudo apt-get update
+              # sudo apt-get install -y build-essential perl libssl-dev:armhf
             build: |
               export OPENSSL_STATIC=1
               export OPENSSL_NO_VENDOR=1
@@ -105,6 +115,8 @@ jobs:
           - host: ubuntu-latest
             target: armv7-unknown-linux-musleabihf
             setup: |
+              sudo apt-get update
+              sudo sed -i '/^deb http:\/\/archive\.ubuntu\.com\/ubuntu\/ noble/ s/^deb /deb [ arch=amd64,i386 ] /' /etc/apt/sources.list
               sudo apt-get update
               sudo dpkg --add-architecture armhf
               sudo apt-get update
