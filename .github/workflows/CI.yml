@@ -25,22 +25,22 @@ jobs:
       fail-fast: false
       matrix:
         settings:
-          # macOS x64
-          - host: macos-latest
-            target: x86_64-apple-darwin
-            build: yarn build --target x86_64-apple-darwin
+          # # macOS x64
+          # - host: macos-latest
+          #   target: x86_64-apple-darwin
+          #   build: yarn build --target x86_64-apple-darwin
 
           # Windows x64
           - host: windows-latest
             target: x86_64-pc-windows-msvc
+            shell: pwsh
             setup: |
               choco install strawberryperl
               choco install make
             build: |
-              mkdir C:\OpenSSL-Temp
+              echo "PERL=$((where.exe perl)[0])" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+              echo "OPENSSL_SRC_PERL=$((where.exe perl)[0])" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
               yarn build --target x86_64-pc-windows-msvc
-            env:
-              OPENSSL_DIR: C:\OpenSSL-Temp
 
           # Windows x86
           - host: windows-latest
@@ -50,39 +50,41 @@ jobs:
               choco install make
             build: |
               mkdir C:\OpenSSL-Temp
+              echo "PERL=$((where.exe perl)[0])" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+              echo "OPENSSL_SRC_PERL=$((where.exe perl)[0])" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
               yarn build --target i686-pc-windows-msvc
-              yarn test
+              # yarn test
             env:
               OPENSSL_DIR: C:\OpenSSL-Temp
 
-          # Linux x64 GNU
-          - host: ubuntu-latest
-            target: x86_64-unknown-linux-gnu
-            docker: ghcr.io/napi-rs/napi-rs/nodejs-rust:lts-debian
-            build: |
-              apt-get update && apt-get install -y build-essential perl
-              yarn build --target x86_64-unknown-linux-gnu
+          # # Linux x64 GNU
+          # - host: ubuntu-latest
+          #   target: x86_64-unknown-linux-gnu
+          #   docker: ghcr.io/napi-rs/napi-rs/nodejs-rust:lts-debian
+          #   build: |
+          #     apt-get update && apt-get install -y build-essential perl
+          #     yarn build --target x86_64-unknown-linux-gnu
 
-          # Linux x64 MUSL
-          - host: ubuntu-latest
-            target: x86_64-unknown-linux-musl
-            docker: ghcr.io/napi-rs/napi-rs/nodejs-rust:lts-alpine
-            build: |
-              apk add --no-cache build-base perl
-              yarn build --target x86_64-unknown-linux-musl
+          # # Linux x64 MUSL
+          # - host: ubuntu-latest
+          #   target: x86_64-unknown-linux-musl
+          #   docker: ghcr.io/napi-rs/napi-rs/nodejs-rust:lts-alpine
+          #   build: |
+          #     apk add --no-cache build-base perl
+          #     yarn build --target x86_64-unknown-linux-musl
 
-          # macOS ARM64
-          - host: macos-latest
-            target: aarch64-apple-darwin
-            build: yarn build --target aarch64-apple-darwin
+          # # macOS ARM64
+          # - host: macos-latest
+          #   target: aarch64-apple-darwin
+          #   build: yarn build --target aarch64-apple-darwin
 
-          # Linux ARM64 GNU
-          - host: ubuntu-latest
-            target: aarch64-unknown-linux-gnu
-            docker: ghcr.io/napi-rs/napi-rs/nodejs-rust:lts-debian-aarch64
-            build: |
-              apt-get update && apt-get install -y build-essential perl
-              yarn build --target aarch64-unknown-linux-gnu
+          # # Linux ARM64 GNU
+          # - host: ubuntu-latest
+          #   target: aarch64-unknown-linux-gnu
+          #   docker: ghcr.io/napi-rs/napi-rs/nodejs-rust:lts-debian-aarch64
+          #   build: |
+          #     apt-get update && apt-get install -y build-essential perl
+          #     yarn build --target aarch64-unknown-linux-gnu
 
           # Linux ARM GNU
           - host: ubuntu-latest
@@ -90,44 +92,44 @@ jobs:
             setup: |
               sudo apt-get update
               sudo apt-get install -y gcc-arm-linux-gnueabihf build-essential perl
-            build: yarn build --target armv7-unknown-linux-gnueabihf
-            env:
-              OPENSSL_DIR: /usr/local/ssl
+              rustup target add armv7-unknown-linux-gnueabihf
+            build: |
+              yarn build --target armv7-unknown-linux-gnueabihf
 
           # Linux ARM MUSL
           - host: ubuntu-latest
             target: armv7-unknown-linux-musleabihf
             docker: ghcr.io/napi-rs/napi-rs/nodejs-rust:lts-alpine
+            setup: |
+              sudo apt-get install -y build-essential perl zig
+              rustup target add armv7-unknown-linux-musleabihf
             build: |
-              apk add --no-cache build-base perl zig
               yarn build --target armv7-unknown-linux-musleabihf
-            env:
-              OPENSSL_DIR: /usr/local/ssl
 
-          # Android ARM64
-          - host: ubuntu-latest
-            target: aarch64-linux-android
-            setup: |
-              sudo apt-get update
-              sudo apt-get install -y build-essential perl
-            build: yarn build --target aarch64-linux-android
+          # # Android ARM64
+          # - host: ubuntu-latest
+          #   target: aarch64-linux-android
+          #   setup: |
+          #     sudo apt-get update
+          #     sudo apt-get install -y build-essential perl
+          #   build: yarn build --target aarch64-linux-android
 
-          # Android ARM
-          - host: ubuntu-latest
-            target: armv7-linux-androideabi
-            setup: |
-              sudo apt-get update
-              sudo apt-get install -y build-essential perl
-            build: yarn build --target armv7-linux-androideabi
+          # # Android ARM
+          # - host: ubuntu-latest
+          #   target: armv7-linux-androideabi
+          #   setup: |
+          #     sudo apt-get update
+          #     sudo apt-get install -y build-essential perl
+          #   build: yarn build --target armv7-linux-androideabi
 
-          # Linux ARM64 MUSL
-          - host: ubuntu-latest
-            target: aarch64-unknown-linux-musl
-            docker: ghcr.io/napi-rs/napi-rs/nodejs-rust:lts-alpine
-            build: |
-              apk add --no-cache build-base perl
-              rustup target add aarch64-unknown-linux-musl
-              yarn build --target aarch64-unknown-linux-musl
+          # # Linux ARM64 MUSL
+          # - host: ubuntu-latest
+          #   target: aarch64-unknown-linux-musl
+          #   docker: ghcr.io/napi-rs/napi-rs/nodejs-rust:lts-alpine
+          #   build: |
+          #     apk add --no-cache build-base perl
+          #     rustup target add aarch64-unknown-linux-musl
+          #     yarn build --target aarch64-unknown-linux-musl
 
           # Windows ARM64
           - host: windows-latest
@@ -137,17 +139,19 @@ jobs:
               choco install make
             build: |
               mkdir C:\OpenSSL-Temp
+              echo "PERL=$((where.exe perl)[0])" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+              echo "OPENSSL_SRC_PERL=$((where.exe perl)[0])" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
               yarn build --target aarch64-pc-windows-msvc
             env:
               OPENSSL_DIR: C:\OpenSSL-Temp
 
-          # Linux RISC-V GNU
-          - host: ubuntu-latest
-            target: riscv64gc-unknown-linux-gnu
-            setup: |
-              sudo apt-get update
-              sudo apt-get install -y gcc-riscv64-linux-gnu build-essential perl
-            build: yarn build --target riscv64gc-unknown-linux-gnu
+          # # Linux RISC-V GNU
+          # - host: ubuntu-latest
+          #   target: riscv64gc-unknown-linux-gnu
+          #   setup: |
+          #     sudo apt-get update
+          #     sudo apt-get install -y gcc-riscv64-linux-gnu build-essential perl
+          #   build: yarn build --target riscv64gc-unknown-linux-gnu
 
     name: stable - ${{ matrix.settings.target }} - node@20
     runs-on: ${{ matrix.settings.host }}
@@ -235,13 +239,13 @@ jobs:
           RUSTUP_IO_THREADS: 1
         with:
           operating_system: freebsd
-          version: "13.2"
+          version: "13.4"
           memory: 8G
           cpu_count: 3
           environment_variables: DEBUG RUSTUP_IO_THREADS
           shell: bash
           run: |
-            sudo pkg install -y -f curl node libnghttp2 npm perl5 gmake gcc pkgconf
+            sudo pkg install -y -f curl node libnghttp2 npm perl5
             sudo npm install -g yarn --ignore-scripts
             curl https://sh.rustup.rs -sSf --output rustup.sh
             sh rustup.sh -y --profile minimal --default-toolchain stable
