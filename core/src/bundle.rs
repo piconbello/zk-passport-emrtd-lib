@@ -59,9 +59,9 @@ pub enum Signature {
 #[derive(Debug, Serialize, Deserialize)]
 pub struct SignatureEC {
     #[serde_as(as = "Base64")]
-    r: Vec<u8>,
+    pub r: Vec<u8>,
     #[serde_as(as = "Base64")]
-    s: Vec<u8>,
+    pub s: Vec<u8>,
 }
 
 #[derive(Sequence)]

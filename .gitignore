@@ -214,3 +214,5 @@ Cargo.lock
 !.yarn/versions
 
 *.node
+
+mock_config.toml

@@ -41,32 +41,25 @@ impl Verify for VerificationBundle {
         }
 
         // 3. Verify that signed_attrs is signed by the local cert
-        let pkey = match &self.cert_local_pubkey {
+        let ds_pkey = match &self.cert_local_pubkey {
             Pubkey::EC(ec) => {
                 let group = openssl::ec::EcGroup::from_curve_name(ec.curve)?;
                 let mut ctx = openssl::bn::BigNumContext::new()?;
                 let mut point = openssl::ec::EcPoint::new(&group)?;
                 point.set_affine_coordinates_gfp(&group, &ec.x, &ec.y, &mut ctx)?;
-
                 let ec_key = openssl::ec::EcKey::from_public_key(&group, &point)?;
                 PKey::from_ec_key(ec_key)?
             }
-            Pubkey::RSA(rsa) => {
-                let modulus = rsa.modulus.to_vec();
-                let exponent = rsa.exponent.to_vec();
-                let rsa_key = openssl::rsa::Rsa::from_public_components(
-                    openssl::bn::BigNum::from_slice(&modulus)?,
-                    openssl::bn::BigNum::from_slice(&exponent)?,
-                )?;
-                PKey::from_rsa(rsa_key)?
+            Pubkey::RSA(_rsa) => {
+                todo!();
             }
         };
 
         verify_signature(
             &self.signed_attrs,
             &self.document_signature,
-            &pkey,
-            &self.digest_algo,
+            &ds_pkey,
+            &self.cert_local_tbs_digest_algo,
         )
         .wrap_err("verifying document")?;
 
@@ -77,18 +70,11 @@ impl Verify for VerificationBundle {
                 let mut ctx = openssl::bn::BigNumContext::new()?;
                 let mut point = openssl::ec::EcPoint::new(&group)?;
                 point.set_affine_coordinates_gfp(&group, &ec.x, &ec.y, &mut ctx)?;
-
                 let ec_key = openssl::ec::EcKey::from_public_key(&group, &point)?;
                 PKey::from_ec_key(ec_key)?
             }
-            Pubkey::RSA(rsa) => {
-                let modulus = rsa.modulus.to_vec();
-                let exponent = rsa.exponent.to_vec();
-                let rsa_key = openssl::rsa::Rsa::from_public_components(
-                    openssl::bn::BigNum::from_slice(&modulus)?,
-                    openssl::bn::BigNum::from_slice(&exponent)?,
-                )?;
-                PKey::from_rsa(rsa_key)?
+            Pubkey::RSA(_rsa) => {
+                todo!();
             }
         };
 
@@ -131,18 +117,16 @@ fn verify_signature(
     let mut verifier = Verifier::new(md, public_key)?;
     verifier.update(data)?;
 
-    // Convert signature to bytes based on type
+    // Convert EC signatures to ASN.1 DER format for OpenSSL verification
     let signature_bytes = match signature {
         Signature::EC(ec_sig) => {
             let asn1_sig = Asn1Signature::try_from(ec_sig)?;
             asn1_sig.to_der()?
         }
-        Signature::RSA(rsa_sig) => {
-            // For RSA signatures, just use the raw bytes
-            rsa_sig.to_vec()
-        }
+        Signature::RSA(rsa_sig) => rsa_sig.to_vec(),
     };
 
+    // Verify the signature and convert OpenSSL result into our Result type
     match verifier.verify(&signature_bytes) {
         Ok(true) => Ok(()),
         Ok(false) => bail!("Invalid signature"),
