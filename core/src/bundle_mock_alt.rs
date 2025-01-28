@@ -1,10 +1,12 @@
 use crate::{
-    bundle::{Signature, SignatureEC, VerificationBundle},
-    pubkeys::{ClonableBigNum, Pubkey, PubkeyEC},
+    bundle::{Signature, SignatureEC, SignatureRSA, VerificationBundle},
+    pubkeys::{ClonableBigNum, Pubkey, PubkeyEC, PubkeyRSA},
 };
 use cms::{cert::x509::attr::Attribute, signed_data::SignedAttributes};
-use color_eyre::{eyre::ContextCompat, Result};
-use const_oid::db::rfc5912::ID_SHA_256;
+use color_eyre::{
+    eyre::{Context, ContextCompat},
+    Result,
+};
 use der::{
     asn1::{OctetString, OctetStringRef, SetOfVec},
     Decode, Encode, Sequence, ValueOrd,
@@ -21,7 +23,6 @@ use openssl::{
     pkey::PKey,
     x509::{X509Builder, X509NameBuilder},
 };
-use sha2::Sha256;
 use smallvec::SmallVec;
 use std::collections::BTreeSet;
 
@@ -205,16 +206,111 @@ fn mock_tail_ec(signed_attrs_der: &[u8], digest_nid: Nid, signature_nid: Nid) ->
         document_signature: Signature::EC(SignatureEC::try_from(&document_signature[..])?),
         cert_local_pubkey: ds_pubkey,
         cert_local_tbs: tbs_cert_der,
-        cert_local_tbs_digest_algo: ID_SHA_256,
+        cert_local_tbs_digest_algo: digest_nid,
         cert_local_signature: Signature::EC(SignatureEC::try_from(&cert_signature[..])?),
         cert_master_subject_key_id: SmallVec::from_slice(&key_id),
         cert_master_pubkey: csca_pubkey,
     })
 }
 
+fn mock_tail_rsa(
+    signed_attrs_der: &[u8],
+    digest_nid: Nid,
+    rsa_size: u32,
+    exponent: u32,
+) -> Result<MockTail> {
+    let digest = MessageDigest::from_nid(digest_nid).wrap_err("Invalid digest nid")?;
+    let exponent_bn = BigNum::from_u32(exponent).wrap_err(format!(
+        "BigNum from exponent {:?} failed in mock_tail_rsa",
+        &exponent
+    ))?;
+
+    // Generate two key pairs - one for CSCA (root) and one for DS (document signer)
+    let csca_key = openssl::rsa::Rsa::generate_with_e(rsa_size, &exponent_bn)?;
+    let csca_pkey = PKey::from_rsa(csca_key.clone())?;
+    let ds_key = openssl::rsa::Rsa::generate_with_e(rsa_size, &exponent_bn)?;
+    let ds_pkey = PKey::from_rsa(ds_key.clone())?;
+
+    let clonable_exp = ClonableBigNum::from(exponent_bn);
+
+    // Create self-signed certificate for document signer
+    let mut builder = X509Builder::new()?;
+    builder.set_version(2)?;
+    let serial = openssl::bn::BigNum::from_u32(1)?;
+    let serial_ref = serial.to_asn1_integer()?;
+    builder.set_serial_number(&serial_ref)?;
+
+    // Set 1 year validity period
+    let not_before = openssl::asn1::Asn1Time::days_from_now(0)?;
+    let not_after = openssl::asn1::Asn1Time::days_from_now(365)?;
+    builder.set_not_before(&not_before)?;
+    builder.set_not_after(&not_after)?;
+
+    let mut name = X509NameBuilder::new()?;
+    name.append_entry_by_text("CN", "Document Signer")?;
+    let name = name.build();
+    builder.set_subject_name(&name)?;
+    builder.set_issuer_name(&name)?;
+    builder.set_pubkey(&ds_pkey)?;
+    builder.sign(&csca_pkey, digest)?;
+
+    let cert = builder.build();
+
+    // Extract the TBS (to-be-signed) portion of the certificate for verification
+    let tbs_cert_der = {
+        let cert_serialized = cert.to_der()?;
+        let cert_parsed = x509_cert::Certificate::from_der(&cert_serialized)?;
+        cert_parsed.tbs_certificate.to_der()?
+    };
+
+    let cert_signature = cert.signature().as_slice().to_vec();
+
+    // Sign the document attributes with the DS key
+    let document_signature = {
+        let mut signer = openssl::sign::Signer::new(digest, &ds_pkey)?;
+        signer.update(signed_attrs_der)?;
+        signer.sign_to_vec()?
+    };
+
+    // Extract public key for verification
+    let csca_pubkey = Pubkey::RSA(PubkeyRSA {
+        modulus: ClonableBigNum::from(csca_key.n().to_owned()?),
+        exponent: clonable_exp.clone(),
+    });
+    let ds_pubkey = Pubkey::RSA(PubkeyRSA {
+        modulus: ClonableBigNum::from(ds_key.n().to_owned()?),
+        exponent: clonable_exp,
+    });
+
+    // Generate key identifier from CSCA public key
+    let key_id = hash(digest, &csca_key.n().to_vec())?.to_vec();
+
+    Ok(MockTail {
+        document_signature: Signature::RSA(SignatureRSA {
+            signature: document_signature,
+            bitsize: rsa_size,
+        }),
+        cert_local_pubkey: ds_pubkey,
+        cert_local_tbs: tbs_cert_der,
+        cert_local_tbs_digest_algo: digest_nid,
+        cert_local_signature: Signature::RSA(SignatureRSA {
+            signature: cert_signature,
+            bitsize: rsa_size,
+        }),
+        cert_master_subject_key_id: SmallVec::from_slice(&key_id),
+        cert_master_pubkey: csca_pubkey,
+    })
+}
+
+#[derive(Debug)]
+pub struct MockConfigSignatureRSA {
+    pub bitsize: u32,
+    pub exponent: u32,
+}
+
 #[derive(Debug)]
 pub enum MockConfigSignature {
-    RSA(usize),
+    RSA(MockConfigSignatureRSA),
     EC(Nid),
 }
 
@@ -231,7 +327,7 @@ struct MockTail {
     document_signature: Signature,
     cert_local_pubkey: Pubkey,
     cert_local_tbs: Vec<u8>,
-    cert_local_tbs_digest_algo: ObjectIdentifier,
+    cert_local_tbs_digest_algo: Nid,
     cert_local_signature: Signature,
     cert_master_subject_key_id: SmallVec<[u8; 20]>,
     cert_master_pubkey: Pubkey,
@@ -250,21 +346,31 @@ impl MockConfig {
 
     fn mock_tail(&self, signed_attrs: &[u8]) -> Result<MockTail> {
         match &self.signature_algo {
-            MockConfigSignature::RSA(_nid) => todo!(),
+            MockConfigSignature::RSA(rsa_config) => mock_tail_rsa(
+                signed_attrs,
+                self.digest_algo_tail,
+                rsa_config.bitsize,
+                rsa_config.exponent,
+            ),
             MockConfigSignature::EC(nid) => mock_tail_ec(signed_attrs, self.digest_algo_tail, *nid),
         }
     }
 
     pub fn mock(&self) -> Result<VerificationBundle> {
-        // TODO hash algo is configurable
-        let (dg1, lds, signed_attrs) = self.mock_head::<Sha256>();
+        let (dg1, lds, signed_attrs) = match self.digest_algo_head {
+            Nid::SHA224 => self.mock_head::<sha2::Sha224>(),
+            Nid::SHA256 => self.mock_head::<sha2::Sha256>(),
+            Nid::SHA384 => self.mock_head::<sha2::Sha384>(),
+            Nid::SHA512 => self.mock_head::<sha2::Sha512>(),
+            _ => return Err(color_eyre::eyre::eyre!("Unsupported digest algorithm")),
+        };
         let tail = self.mock_tail(&signed_attrs)?;
 
         Ok(VerificationBundle {
             dg1: SmallVec::from_slice(&dg1),
             lds,
             signed_attrs: signed_attrs.into(),
-            digest_algo: Sha256::OID,
+            digest_algo: self.digest_algo_head,
             document_signature: tail.document_signature,
             cert_local_pubkey: tail.cert_local_pubkey,
             cert_local_tbs: tail.cert_local_tbs,
@@ -275,24 +381,3 @@ impl MockConfig {
         })
     }
 }
-
-// pub fn mock_verification_bundle(mrz: &[u8; 88], dgs: &BTreeSet<u8>) -> Result<VerificationBundle> {
-//     let m_digest = MockDigest;
-//     let dg1 = mock_dg1_td3(mrz);
-//     let lds = mock_lds(m_digest, &dg1, dgs);
-//     let signed_attrs = prepare_signed_attributes(&m_digest.digest(&lds));
-//     let s = mock_sign(&signed_attrs)?;
-//     Ok(VerificationBundle {
-//         dg1: SmallVec::from_slice(&dg1),
-//         lds,
-//         signed_attrs: signed_attrs.into(),
-//         digest_algo: m_digest.oid(),
-//         document_signature: s.document_signature,
-//         cert_local_pubkey: s.cert_local_pubkey,
-//         cert_local_tbs: s.cert_local_tbs,
-//         cert_local_tbs_digest_algo: s.cert_local_tbs_digest_algo,
-//         cert_local_signature: s.cert_local_signature,
-//         cert_master_subject_key_id: s.cert_master_subject_key_id,
-//         cert_master_pubkey: s.cert_master_pubkey,
-//     })
-// }

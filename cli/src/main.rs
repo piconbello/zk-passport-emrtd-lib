@@ -2,7 +2,7 @@ use clap::{Parser, Subcommand};
 use color_eyre::eyre::{bail, eyre, Context, ContextCompat, Result};
 use emrtd_core::{
     bundle::{self, VerificationBundle},
-    bundle_mock, bundle_mock_alt,
+    bundle_mock_alt,
     bundle_verify::Verify,
     document_components, master_certs,
     openssl::nid::Nid,
@@ -76,11 +76,17 @@ pub fn shortname_to_nid(short_name: &str) -> Result<Nid> {
     Ok(Nid::from_raw(nid))
 }
 
+#[derive(Deserialize, Debug)]
+struct MockConfigSignatureRSA {
+    bitsize: u32,
+    exponent: Option<u32>,
+}
+
 #[allow(clippy::upper_case_acronyms)]
 #[derive(Deserialize, Debug)]
 #[serde(untagged)]
 enum MockConfigSignature {
-    RSA(usize),
+    RSA(MockConfigSignatureRSA),
     EC(String),
 }
 
@@ -89,7 +95,12 @@ impl TryFrom<MockConfigSignature> for bundle_mock_alt::MockConfigSignature {
 
     fn try_from(value: MockConfigSignature) -> Result<Self> {
         match value {
-            MockConfigSignature::RSA(size) => Ok(bundle_mock_alt::MockConfigSignature::RSA(size)),
+            MockConfigSignature::RSA(rsa_config) => Ok(bundle_mock_alt::MockConfigSignature::RSA(
+                bundle_mock_alt::MockConfigSignatureRSA {
+                    bitsize: rsa_config.bitsize,
+                    exponent: rsa_config.exponent.unwrap_or(65537),
+                },
+            )),
             MockConfigSignature::EC(curve) => {
                 let nid = shortname_to_nid(curve.as_str()).wrap_err("mcs ec nid")?;
                 Ok(bundle_mock_alt::MockConfigSignature::EC(nid))
@@ -114,7 +125,7 @@ impl TryFrom<MockConfig> for bundle_mock_alt::MockConfig {
 
     fn try_from(mc: MockConfig) -> Result<Self> {
         Ok(Self {
-            mrz: mc.mrz.unwrap_or(*bundle_mock::MRZ_FRODO),
+            mrz: mc.mrz.unwrap_or(*bundle_mock_alt::MRZ_FRODO),
             dgs: mc
                 .dgs
                 .unwrap_or_else(|| BTreeSet::from([1, 2, 3, 11, 12, 14])),
