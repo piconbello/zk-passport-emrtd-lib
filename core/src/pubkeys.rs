@@ -5,10 +5,14 @@ use color_eyre::eyre::{bail, Context, ContextCompat, Error, Result};
 use der::{asn1::BitString, Any, Encode};
 use openssl::{
     bn::{BigNum, BigNumContext},
+    ec::{EcGroup, EcKey, EcPoint},
     nid::Nid,
     pkey::{Id, PKey},
+    rsa::Rsa,
 };
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
+use serde_with::{base64::Base64, serde_as};
+use smallvec::SmallVec;
 use spki::SubjectPublicKeyInfo;
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -18,6 +22,27 @@ pub enum Pubkey {
     RSA(PubkeyRSA),
 }
 
+impl Pubkey {
+    pub fn as_hex(&self) -> String {
+        match self {
+            Pubkey::EC(pubkey_ec) => pubkey_ec.as_hex(),
+            Pubkey::RSA(pubkey_rsa) => pubkey_rsa.as_hex(),
+        }
+    }
+}
+
+impl TryInto<PKey<openssl::pkey::Public>> for &Pubkey {
+    type Error = Error;
+
+    fn try_into(self) -> std::result::Result<PKey<openssl::pkey::Public>, Self::Error> {
+        match self {
+            Pubkey::EC(pubkey_ec) => pubkey_ec.try_into(),
+            Pubkey::RSA(pubkey_rsa) => pubkey_rsa.try_into(),
+        }
+    }
+}
+
+#[serde_as]
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct PubkeyEC {
     #[serde(with = "nid_serialization")]
@@ -26,14 +51,56 @@ pub struct PubkeyEC {
     pub x: ClonableBigNum,
     #[serde(with = "clonable_bignum_serialization")]
     pub y: ClonableBigNum,
+    #[serde_as(as = "Base64")]
+    pub encoded: SmallVec<[u8; 256]>,
 }
 
+impl PubkeyEC {
+    fn as_hex(&self) -> String {
+        hex::encode(&self.encoded)
+    }
+}
+
+impl TryInto<PKey<openssl::pkey::Public>> for &PubkeyEC {
+    type Error = Error;
+
+    fn try_into(self) -> std::result::Result<PKey<openssl::pkey::Public>, Self::Error> {
+        let group = EcGroup::from_curve_name(self.curve)
+            .wrap_err("Failed to create EcGroup from curve name")?;
+        let mut ctx = BigNumContext::new()?;
+        let mut point = EcPoint::new(&group)?;
+        point.set_affine_coordinates_gfp(&group, &self.x, &self.y, &mut ctx)?;
+        let ec_key = EcKey::from_public_key(&group, &point)?;
+        let pkey = PKey::from_ec_key(ec_key)?;
+        Ok(pkey)
+    }
+}
+
+#[serde_as]
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct PubkeyRSA {
     #[serde(with = "clonable_bignum_serialization")]
     pub modulus: ClonableBigNum,
     #[serde(with = "clonable_bignum_serialization")]
     pub exponent: ClonableBigNum,
+    #[serde_as(as = "Base64")]
+    pub encoded: SmallVec<[u8; 1024]>,
+}
+impl PubkeyRSA {
+    fn as_hex(&self) -> String {
+        hex::encode(&self.encoded)
+    }
+}
+impl TryInto<PKey<openssl::pkey::Public>> for &PubkeyRSA {
+    type Error = Error;
+
+    fn try_into(self) -> std::result::Result<PKey<openssl::pkey::Public>, Self::Error> {
+        let n = self.modulus.to_owned();
+        let e = self.exponent.to_owned();
+        let rsa = Rsa::from_public_components(n.0, e.0)?;
+        let pkey = PKey::from_rsa(rsa)?;
+        Ok(pkey)
+    }
 }
 
 impl TryFrom<&[u8]> for Pubkey {
@@ -55,10 +122,18 @@ impl TryFrom<&[u8]> for Pubkey {
                 pub_key.affine_coordinates_gfp(group, &mut x, &mut y, &mut ctx)?;
                 let curve = group.curve_name().wrap_err("unknown curve")?;
 
+                let encoded: SmallVec<_> = pub_key
+                    .to_bytes(
+                        group,
+                        openssl::ec::PointConversionForm::UNCOMPRESSED,
+                        &mut ctx,
+                    )?
+                    .into();
                 Ok(Self::EC(PubkeyEC {
                     curve,
                     x: x.into(),
                     y: y.into(),
+                    encoded,
                 }))
             }
             Id::RSA => {
@@ -66,9 +141,11 @@ impl TryFrom<&[u8]> for Pubkey {
                 let n = rsa.n();
                 let e = rsa.e();
 
+                let encoded: SmallVec<_> = rsa.public_key_to_der()?.into();
                 Ok(Self::RSA(PubkeyRSA {
                     modulus: n.to_owned()?.into(),
                     exponent: e.to_owned()?.into(),
+                    encoded,
                 }))
             }
             _ => bail!("could not parse spki"),

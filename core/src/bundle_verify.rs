@@ -73,7 +73,7 @@ impl VerificationBundle {
                 PKey::from_ec_key(ec_key)?
             }
             Pubkey::RSA(_rsa) => {
-                todo!();
+                bail!("Master pubkey is RSA, in verify_tail_ec");
             }
         };
 

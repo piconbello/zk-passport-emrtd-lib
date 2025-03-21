@@ -13,6 +13,8 @@ use smallvec::SmallVec;
 use spki::ObjectIdentifier;
 use x509_cert::ext::pkix::SubjectKeyIdentifier;
 
+use crate::dg1::DG1Variant;
+
 const OID_MRTD_SIGNATURE_DATA: ObjectIdentifier = ObjectIdentifier::new_unwrap("2.23.136.1.1.1");
 
 pub fn parse_sod(sod_bytes: &[u8]) -> Result<SignedData> {
@@ -88,29 +90,20 @@ fn extract_certificate(sod: &SignedData) -> Result<&CertificateInner> {
     Ok(cert)
 }
 
-pub fn extract_authority_identifier_key(cert: &CertificateInner) -> Result<SmallVec<[u8; 20]>> {
-    let exts = cert
-        .tbs_certificate
-        .extensions
-        .as_ref()
-        .wrap_err("need extensions in cert")?;
+pub fn extract_authority_identifier_key(cert: &CertificateInner) -> Option<SmallVec<[u8; 20]>> {
+    let exts = cert.tbs_certificate.extensions.as_ref()?;
 
     let ext = exts
         .iter()
-        .find(|ext| ext.extn_id == ID_CE_AUTHORITY_KEY_IDENTIFIER)
-        .wrap_err("need authorith key extension")?;
+        .find(|ext| ext.extn_id == ID_CE_AUTHORITY_KEY_IDENTIFIER)?;
 
-    match AuthorityKeyIdentifier::from_der(ext.extn_value.as_bytes()) {
-        Ok(aki) => {
-            let ki = aki
-                .key_identifier
-                .wrap_err("need key identifier in auth key ident")?;
-            Ok(ki.as_bytes().into())
-        }
-        Err(_) => {
-            bail!("could not parse auth key ident");
-        }
-    }
+    let aki = match AuthorityKeyIdentifier::from_der(ext.extn_value.as_bytes()) {
+        Ok(aki) => aki,
+        Err(_) => return None,
+    };
+
+    let ki = aki.key_identifier?;
+    Some(ki.as_bytes().into())
 }
 
 pub fn extract_subject_identifier_key(
@@ -143,6 +136,7 @@ pub fn extract_subject_identifier_key(
 
 pub struct DocumentComponents<'a> {
     pub dg1: &'a [u8],
+    pub dg1_variant: DG1Variant,
     pub lds: &'a [u8],
     pub signed_attrs: &'a SignedAttributes,
     pub digest_algo: ObjectIdentifier,
@@ -151,11 +145,12 @@ pub struct DocumentComponents<'a> {
 }
 
 impl<'a> DocumentComponents<'a> {
-    pub fn new(sod: &'a SignedData, dg1: &'a [u8]) -> Result<Self> {
+    pub fn new(sod: &'a SignedData, dg1: &'a [u8], dg1_variant: DG1Variant) -> Result<Self> {
         let signer_info = extract_signer_info(sod)?;
         let certificate = extract_certificate(sod)?;
         Ok(Self {
             dg1,
+            dg1_variant,
             lds: extract_lds_from_econtent(&sod.encap_content_info)?,
             signed_attrs: extract_signed_attrs(signer_info)?,
             digest_algo: extract_digest_algo(sod)?,

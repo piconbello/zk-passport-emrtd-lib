@@ -5,7 +5,7 @@ use crate::{
 };
 use cms::{cert::x509::attr::Attribute, signed_data::SignedAttributes};
 use color_eyre::{
-    eyre::{Context, ContextCompat},
+    eyre::{eyre, ContextCompat},
     Result,
 };
 use der::{
@@ -19,9 +19,10 @@ use digest::{
 use openssl::{
     bn::{BigNum, BigNumContext},
     ec::{EcGroup, EcKey, PointConversionForm},
-    hash::{hash, MessageDigest},
+    hash::MessageDigest,
     nid::Nid,
-    pkey::PKey,
+    pkey::{PKey, Private},
+    rsa::Rsa,
     x509::{X509Builder, X509NameBuilder},
 };
 use smallvec::SmallVec;
@@ -29,15 +30,18 @@ use std::collections::BTreeSet;
 
 pub const MRZ_FRODO: &[u8; 88] =
     b"P<GBRBAGGINS<<FRODO<<<<<<<<<<<<<<<<<<<<<<<<<P231458901GBR6709224M2209151ZE184226B<<<<<18";
-const _SECP_256_K_1: ObjectIdentifier = ObjectIdentifier::new_unwrap("1.3.132.0.10");
+
+/// Enum to represent the master private key loaded from a PEM file
+pub enum MasterPrivateKey {
+    RSA(Rsa<Private>),
+    EC(EcKey<Private>),
+}
 
 fn mock_dg1_td3(mrz: &[u8; 88]) -> [u8; 93] {
     const MRZ_TD3_HEADER: [u8; 5] = [0x61, 0x5B, 0x5F, 0x1F, 0x58];
     let mut dg1 = [0u8; 93];
     dg1[..5].copy_from_slice(&MRZ_TD3_HEADER);
-
     dg1[5..].copy_from_slice(mrz);
-
     dg1
 }
 
@@ -58,8 +62,6 @@ struct DatagroupDigest {
     pub datagroup_number: u8,
     pub digest: OctetString,
 }
-
-//
 
 fn hash_serialize_datagroup<D>(n: u8, datagroup_content: impl AsRef<[u8]>) -> DatagroupDigest
 where
@@ -121,20 +123,41 @@ fn prepare_signed_attributes(lds_hash: &[u8]) -> Vec<u8> {
     signed_attrs.to_der().expect("infallible")
 }
 
-fn mock_tail_ec(signed_attrs_der: &[u8], digest_nid: Nid, signature_nid: Nid) -> Result<MockTail> {
-    let digest = MessageDigest::from_nid(digest_nid).wrap_err("Invalid digest nid")?;
-    let group = EcGroup::from_curve_name(signature_nid)?;
+struct MockTail {
+    document_signature: Signature,
+    cert_local_pubkey: Pubkey,
+    cert_local_tbs: Vec<u8>,
+    cert_local_tbs_digest_algo: Nid,
+    cert_local_signature: Signature,
+    cert_master_pubkey: Pubkey,
+}
 
-    // Generate two key pairs - one for CSCA (root) and one for DS (document signer)
-    let csca_key = EcKey::generate(&group)?;
-    let csca_pkey = PKey::from_ec_key(csca_key.clone())?;
+fn mock_tail_with_ec_master(
+    signed_attrs_der: &[u8],
+    digest_nid: Nid,
+    master_key: &EcKey<Private>,
+) -> Result<MockTail> {
+    let digest = MessageDigest::from_nid(digest_nid).wrap_err("Invalid digest nid")?;
+
+    // Extract the curve from the master key
+    let group = EcGroup::from_curve_name(
+        master_key
+            .group()
+            .curve_name()
+            .ok_or_else(|| eyre!("Failed to get curve name from master key"))?,
+    )?;
+
+    // Create PKey from master key for signing
+    let csca_pkey = PKey::from_ec_key(master_key.clone())?;
+
+    // Generate a new key for document signer
     let ds_key = EcKey::generate(&group)?;
     let ds_pkey = PKey::from_ec_key(ds_key.clone())?;
 
     // Create self-signed certificate for document signer
     let mut builder = X509Builder::new()?;
     builder.set_version(2)?;
-    let serial = openssl::bn::BigNum::from_u32(1)?;
+    let serial = BigNum::from_u32(1)?;
     let serial_ref = serial.to_asn1_integer()?;
     builder.set_serial_number(&serial_ref)?;
 
@@ -171,20 +194,20 @@ fn mock_tail_ec(signed_attrs_der: &[u8], digest_nid: Nid, signature_nid: Nid) ->
     };
 
     // Extract public key coordinates for verification
-    let mut ctx = openssl::bn::BigNumContext::new()?;
+    let mut ctx = BigNumContext::new()?;
     let mut x = BigNum::new()?;
     let mut y = BigNum::new()?;
 
-    csca_key
+    master_key
         .public_key()
         .affine_coordinates_gfp(&group, &mut x, &mut y, &mut ctx)?;
-    let encoded: SmallVec<_> = csca_key
+    let encoded: SmallVec<_> = master_key
         .public_key()
         .to_bytes(&group, PointConversionForm::UNCOMPRESSED, &mut ctx)
-        .expect("we created the pubkey")
+        .expect("we have the pubkey")
         .into();
     let csca_pubkey = Pubkey::EC(PubkeyEC {
-        curve: signature_nid,
+        curve: master_key.group().curve_name().unwrap(),
         x: ClonableBigNum::from(x),
         y: ClonableBigNum::from(y),
         encoded,
@@ -201,19 +224,11 @@ fn mock_tail_ec(signed_attrs_der: &[u8], digest_nid: Nid, signature_nid: Nid) ->
         .expect("we created the pubkey")
         .into();
     let ds_pubkey = Pubkey::EC(PubkeyEC {
-        curve: signature_nid,
+        curve: master_key.group().curve_name().unwrap(),
         x: ClonableBigNum::from(x),
         y: ClonableBigNum::from(y),
         encoded,
     });
-
-    // Generate key identifier from CSCA public key
-    let mut ctx = BigNumContext::new()?;
-    let buf =
-        csca_key
-            .public_key()
-            .to_bytes(&group, PointConversionForm::UNCOMPRESSED, &mut ctx)?;
-    let key_id = hash(digest, &buf)?.to_vec();
 
     Ok(MockTail {
         document_signature: Signature::EC(SignatureEC::try_from(&document_signature[..])?),
@@ -221,35 +236,33 @@ fn mock_tail_ec(signed_attrs_der: &[u8], digest_nid: Nid, signature_nid: Nid) ->
         cert_local_tbs: tbs_cert_der,
         cert_local_tbs_digest_algo: digest_nid,
         cert_local_signature: Signature::EC(SignatureEC::try_from(&cert_signature[..])?),
-        cert_master_subject_key_id: SmallVec::from_slice(&key_id),
         cert_master_pubkey: csca_pubkey,
     })
 }
 
-fn mock_tail_rsa(
+fn mock_tail_with_rsa_master(
     signed_attrs_der: &[u8],
     digest_nid: Nid,
-    rsa_size: u32,
-    exponent: u32,
+    master_key: &Rsa<Private>,
 ) -> Result<MockTail> {
     let digest = MessageDigest::from_nid(digest_nid).wrap_err("Invalid digest nid")?;
-    let exponent_bn = BigNum::from_u32(exponent).wrap_err(format!(
-        "BigNum from exponent {:?} failed in mock_tail_rsa",
-        &exponent
-    ))?;
 
-    // Generate two key pairs - one for CSCA (root) and one for DS (document signer)
-    let csca_key = openssl::rsa::Rsa::generate_with_e(rsa_size, &exponent_bn)?;
-    let csca_pkey = PKey::from_rsa(csca_key.clone())?;
-    let ds_key = openssl::rsa::Rsa::generate_with_e(rsa_size, &exponent_bn)?;
+    // Extract the exponent from the master key
+    let exponent = master_key.e().to_owned()?;
+
+    // Create PKey from master key for signing
+    let csca_pkey = PKey::from_rsa(master_key.clone())?;
+
+    // Generate a new key for document signer with the same exponent
+    let ds_key = Rsa::generate_with_e(master_key.size() * 8, &exponent)?;
     let ds_pkey = PKey::from_rsa(ds_key.clone())?;
 
-    let clonable_exp = ClonableBigNum::from(exponent_bn);
+    let clonable_exp = ClonableBigNum::from(exponent);
 
     // Create self-signed certificate for document signer
     let mut builder = X509Builder::new()?;
     builder.set_version(2)?;
-    let serial = openssl::bn::BigNum::from_u32(1)?;
+    let serial = BigNum::from_u32(1)?;
     let serial_ref = serial.to_asn1_integer()?;
     builder.set_serial_number(&serial_ref)?;
 
@@ -286,16 +299,17 @@ fn mock_tail_rsa(
     };
 
     // Extract public key for verification
-    let encoded: SmallVec<_> = csca_key
+    let encoded: SmallVec<_> = master_key
         .public_key_to_der()
-        .expect("we created this key")
+        .expect("we have this key")
         .into();
     let csca_pubkey = Pubkey::RSA(PubkeyRSA {
-        modulus: ClonableBigNum::from(csca_key.n().to_owned()?),
+        modulus: ClonableBigNum::from(master_key.n().to_owned()?),
         exponent: clonable_exp.clone(),
         encoded,
     });
-    let encoded: SmallVec<_> = csca_key
+
+    let encoded: SmallVec<_> = ds_key
         .public_key_to_der()
         .expect("we created this key")
         .into();
@@ -305,55 +319,28 @@ fn mock_tail_rsa(
         encoded,
     });
 
-    // Generate key identifier from CSCA public key
-    let key_id = hash(digest, &csca_key.n().to_vec())?.to_vec();
-
     Ok(MockTail {
         document_signature: Signature::RSA(SignatureRSA {
             signature: document_signature,
-            bitsize: rsa_size,
+            bitsize: master_key.size() * 8,
         }),
         cert_local_pubkey: ds_pubkey,
         cert_local_tbs: tbs_cert_der,
         cert_local_tbs_digest_algo: digest_nid,
         cert_local_signature: Signature::RSA(SignatureRSA {
             signature: cert_signature,
-            bitsize: rsa_size,
+            bitsize: master_key.size() * 8,
         }),
-        cert_master_subject_key_id: SmallVec::from_slice(&key_id),
         cert_master_pubkey: csca_pubkey,
     })
 }
 
-#[derive(Debug)]
-pub struct MockConfigSignatureRSA {
-    pub bitsize: u32,
-    pub exponent: u32,
-}
-
-#[derive(Debug)]
-pub enum MockConfigSignature {
-    RSA(MockConfigSignatureRSA),
-    EC(Nid),
-}
-
-#[derive(Debug)]
 pub struct MockConfig {
     pub mrz: [u8; 88],
     pub dgs: BTreeSet<u8>,
     pub digest_algo_head: Nid,
     pub digest_algo_tail: Nid,
-    pub signature_algo: MockConfigSignature,
-}
-
-struct MockTail {
-    document_signature: Signature,
-    cert_local_pubkey: Pubkey,
-    cert_local_tbs: Vec<u8>,
-    cert_local_tbs_digest_algo: Nid,
-    cert_local_signature: Signature,
-    cert_master_subject_key_id: SmallVec<[u8; 20]>,
-    cert_master_pubkey: Pubkey,
+    pub master_key: MasterPrivateKey,
 }
 
 impl MockConfig {
@@ -368,14 +355,13 @@ impl MockConfig {
     }
 
     fn mock_tail(&self, signed_attrs: &[u8]) -> Result<MockTail> {
-        match &self.signature_algo {
-            MockConfigSignature::RSA(rsa_config) => mock_tail_rsa(
-                signed_attrs,
-                self.digest_algo_tail,
-                rsa_config.bitsize,
-                rsa_config.exponent,
-            ),
-            MockConfigSignature::EC(nid) => mock_tail_ec(signed_attrs, self.digest_algo_tail, *nid),
+        match &self.master_key {
+            MasterPrivateKey::EC(ec_key) => {
+                mock_tail_with_ec_master(signed_attrs, self.digest_algo_tail, ec_key)
+            }
+            MasterPrivateKey::RSA(rsa_key) => {
+                mock_tail_with_rsa_master(signed_attrs, self.digest_algo_tail, rsa_key)
+            }
         }
     }
 
@@ -385,7 +371,7 @@ impl MockConfig {
             Nid::SHA256 => self.mock_head::<sha2::Sha256>(),
             Nid::SHA384 => self.mock_head::<sha2::Sha384>(),
             Nid::SHA512 => self.mock_head::<sha2::Sha512>(),
-            _ => return Err(color_eyre::eyre::eyre!("Unsupported digest algorithm")),
+            _ => return Err(eyre!("Unsupported digest algorithm")),
         };
         let tail = self.mock_tail(&signed_attrs)?;
 
@@ -400,7 +386,7 @@ impl MockConfig {
             cert_local_tbs: tail.cert_local_tbs,
             cert_local_tbs_digest_algo: tail.cert_local_tbs_digest_algo,
             cert_local_signature: tail.cert_local_signature,
-            cert_master_subject_key_id: Some(tail.cert_master_subject_key_id),
+            cert_master_subject_key_id: None,
             cert_master_pubkey: tail.cert_master_pubkey,
         })
     }

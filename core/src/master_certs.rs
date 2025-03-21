@@ -234,8 +234,8 @@ pub fn extract_master_certificates<R: BufRead>(reader: R) -> Result<Vec<Certific
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct MasterCert {
     pub pubkey: Pubkey,
-    #[serde_as(as = "Base64")]
-    pub subject_key_id: SmallVec<[u8; 20]>,
+    #[serde_as(as = "Option<Base64>")]
+    pub subject_key_id: Option<SmallVec<[u8; 20]>>,
 }
 
 pub fn distill_master_certificates(certs: &[Certificate]) -> Result<Vec<MasterCert>> {
@@ -246,7 +246,7 @@ pub fn distill_master_certificates(certs: &[Certificate]) -> Result<Vec<MasterCe
             let subject_key_id = extract_subject_identifier_key(cert)?;
             Ok(MasterCert {
                 pubkey,
-                subject_key_id,
+                subject_key_id: Some(subject_key_id),
             })
         })
         .collect::<Result<Vec<_>>>()?;
