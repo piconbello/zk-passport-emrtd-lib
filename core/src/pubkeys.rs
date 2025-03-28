@@ -141,7 +141,7 @@ impl TryFrom<&[u8]> for Pubkey {
                 let n = rsa.n();
                 let e = rsa.e();
 
-                let encoded: SmallVec<_> = rsa.public_key_to_der()?.into();
+                let encoded: SmallVec<_> = rsa.public_key_to_der_pkcs1()?.into();
                 Ok(Self::RSA(PubkeyRSA {
                     modulus: n.to_owned()?.into(),
                     exponent: e.to_owned()?.into(),

@@ -1,5 +1,6 @@
 use clap::{Parser, Subcommand};
 use color_eyre::eyre::{bail, Result};
+use emrtd_core::rsa_message_template::RsaMessageTemplates;
 use emrtd_core::{
     bundle::VerificationBundle, bundle_verify::Verify, dg1::DG1Variant, smallvec::SmallVec,
 };
@@ -49,6 +50,9 @@ enum Commands {
         #[arg(required = true, value_name = "BUNDLE_FILE")]
         bundle_file: PathBuf,
     },
+
+    /// generates rsa message templates json
+    RsaMessageTemplate {},
 }
 
 #[serde_as]
@@ -90,5 +94,11 @@ pub fn main() -> Result<()> {
             scan_file,
         } => bundle::handle_bundle(&masterlist_json_file, &scan_file),
         Commands::Verify { bundle_file } => handle_verify(&bundle_file),
+        Commands::RsaMessageTemplate {} => {
+            let templates = RsaMessageTemplates::generate();
+            let s = serde_json::to_string_pretty(&templates).expect("");
+            println!("{}", &s);
+            Ok(())
+        }
     }
 }

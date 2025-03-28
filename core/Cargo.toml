@@ -17,6 +17,7 @@ hex = "0.4.3"
 # hex = "0.4.3"
 itertools = "0.13.0"
 k256 = { version = "0.13.4", features = ["ecdsa"] }
+num-bigint = { version = "0.4.6", features = ["serde"] }
 openssl = { version = "0.10.68", features = ["vendored"] }
 openssl-sys = { version = "0.9.104", features = ["vendored"] }
 # p224 = "0.13.2"
