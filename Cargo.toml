@@ -1,5 +1,5 @@
 [workspace]
-members = ["core", "cli"]
+members = ["core", "cli", "pss"]
 resolver = "2"
 
 [workspace.metadata]
