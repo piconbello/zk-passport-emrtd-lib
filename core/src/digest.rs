@@ -44,6 +44,24 @@ impl Sha2 {
         }
     }
 
+    pub fn from_oid(pair: &ObjectIdentifier) -> Result<Self> {
+        match *pair {
+            ECDSA_WITH_SHA_224 => Ok(Self::Sha224),
+            ECDSA_WITH_SHA_256 => Ok(Self::Sha256),
+            ECDSA_WITH_SHA_384 => Ok(Self::Sha384),
+            ECDSA_WITH_SHA_512 => Ok(Self::Sha512),
+            SHA_224_WITH_RSA_ENCRYPTION => Ok(Self::Sha224),
+            SHA_256_WITH_RSA_ENCRYPTION => Ok(Self::Sha256),
+            SHA_384_WITH_RSA_ENCRYPTION => Ok(Self::Sha384),
+            SHA_512_WITH_RSA_ENCRYPTION => Ok(Self::Sha512),
+            ID_SHA_224 => Ok(Self::Sha224),
+            ID_SHA_256 => Ok(Self::Sha256),
+            ID_SHA_384 => Ok(Self::Sha384),
+            ID_SHA_512 => Ok(Self::Sha512),
+            _ => Err(eyre!("unsupported digest oid {:?}", DB.by_oid(pair))),
+        }
+    }
+
     pub fn from_signature_algo_pair_oid(pair: &ObjectIdentifier) -> Result<Self> {
         match *pair {
             ECDSA_WITH_SHA_224 => Ok(Self::Sha224),

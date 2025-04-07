@@ -1,5 +1,6 @@
 use crate::{
-    bundle::{Signature, SignatureEC, SignatureRSA, VerificationBundle},
+    bundle::VerificationBundle,
+    bundle_signature::{Signature, SignatureEc, SignatureRsaPkcs},
     dg1::DG1Variant,
     pubkeys::{ClonableBigNum, Pubkey, PubkeyEC, PubkeyRSA},
 };
@@ -216,11 +217,11 @@ fn mock_tail_ec(signed_attrs_der: &[u8], digest_nid: Nid, signature_nid: Nid) ->
     let key_id = hash(digest, &buf)?.to_vec();
 
     Ok(MockTail {
-        document_signature: Signature::EC(SignatureEC::try_from(&document_signature[..])?),
+        document_signature: Signature::Ec(SignatureEc::try_from(&document_signature[..])?),
         cert_local_pubkey: ds_pubkey,
         cert_local_tbs: tbs_cert_der,
         cert_local_tbs_digest_algo: digest_nid,
-        cert_local_signature: Signature::EC(SignatureEC::try_from(&cert_signature[..])?),
+        cert_local_signature: Signature::Ec(SignatureEc::try_from(&cert_signature[..])?),
         cert_master_subject_key_id: SmallVec::from_slice(&key_id),
         cert_master_pubkey: csca_pubkey,
     })
@@ -309,16 +310,16 @@ fn mock_tail_rsa(
     let key_id = hash(digest, &csca_key.n().to_vec())?.to_vec();
 
     Ok(MockTail {
-        document_signature: Signature::RSA(SignatureRSA {
+        document_signature: Signature::RsaPkcs(SignatureRsaPkcs {
             signature: document_signature,
-            bitsize: rsa_size,
+            message_hash_algorithm: digest_nid,
         }),
         cert_local_pubkey: ds_pubkey,
         cert_local_tbs: tbs_cert_der,
         cert_local_tbs_digest_algo: digest_nid,
-        cert_local_signature: Signature::RSA(SignatureRSA {
+        cert_local_signature: Signature::RsaPkcs(SignatureRsaPkcs {
             signature: cert_signature,
-            bitsize: rsa_size,
+            message_hash_algorithm: digest_nid,
         }),
         cert_master_subject_key_id: SmallVec::from_slice(&key_id),
         cert_master_pubkey: csca_pubkey,

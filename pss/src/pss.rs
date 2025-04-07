@@ -17,6 +17,7 @@ pub fn div_ceil(a: usize, b: usize) -> usize {
 /// XORs the generated mask with the destination buffer `dst`.
 /// `hash` instance is used internally and reset.
 fn mgf1_xor(dst: &mut [u8], hash: &mut dyn DynDigest, seed: &[u8]) -> Result<()> {
+    println!("dst before {}", hex::encode(&dst));
     let h_len = hash.output_size();
     if h_len == 0 {
         return Err(eyre!("Hash function output size cannot be zero for MGF1"));
@@ -38,6 +39,8 @@ fn mgf1_xor(dst: &mut [u8], hash: &mut dyn DynDigest, seed: &[u8]) -> Result<()>
         hash.update(&counter);
         let mask_chunk = hash.finalize_reset();
 
+        println!("mask chunk {} {}", c, hex::encode(&mask_chunk));
+
         // XOR chunk with the mask
         for (i, m) in mask_chunk.iter().take(chunk.len()).enumerate() {
             chunk[i] ^= *m;
@@ -45,6 +48,8 @@ fn mgf1_xor(dst: &mut [u8], hash: &mut dyn DynDigest, seed: &[u8]) -> Result<()>
 
         i += 1;
     }
+
+    println!("dst after {}", hex::encode(&dst));
 
     Ok(())
 }
@@ -326,6 +331,8 @@ pub fn emsa_pss_verify(
     let h_clone = h.to_vec(); // Avoids complex lifetime issues with mgf1_xor needing &[]
     mgf1_xor(db, hash, &h_clone)?; // db is now unmasked DB
 
+    println!("UnmaskedDB (hex): {}", hex::encode(&db));
+
     // Step 9: Zero the high bits of the *unmasked* DB
     let zero_bits = 8 * em_len - em_bits;
     if zero_bits > 0 && zero_bits < 8 {
@@ -334,6 +341,8 @@ pub fn emsa_pss_verify(
         db[0] = 0x00; // Ensure first byte is zero if needed
     }
     // If zero_bits == 0, no masking needed.
+    //
+    println!("zeroed (hex): {}", hex::encode(&db));
 
     // Step 10: Check padding structure (00...00 || 0x01)
     let padding_ok: Choice = emsa_pss_verify_salt_padding(db, em_len, s_len, h_len);

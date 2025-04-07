@@ -4,10 +4,10 @@ use const_oid::{db::DB, ObjectIdentifier};
 use der::Encode;
 use num_bigint::BigUint;
 use serde::Serialize;
-use serde_with::{base64::Base64, serde_as, DisplayFromStr, Map};
+use serde_with::{serde_as, DisplayFromStr, Map};
 
 const DIGEST_VARIANTS: &'static [Sha2Variant] = &[Sha2Variant::Sha256, Sha2Variant::Sha512];
-const KEY_SIZES_BYTES: &'static [usize] = &[512];
+const KEY_SIZES_BYTES: &'static [usize] = &[512, 256];
 
 #[derive(Debug, Copy, Clone)]
 pub enum Sha2Variant {
@@ -224,22 +224,21 @@ mod tests {
     fn test_pkcs1v15_message_sizes() {
         // Test for 2048-bit RSA key with SHA-256
         let msg_2048_sha256 = create_pkcs1v15_message(Sha2Variant::Sha256, 256);
-        assert_eq!(msg_2048_sha256.0.len(), 256);
+        assert_eq!(msg_2048_sha256.len(), 256);
 
         // Test for 4096-bit RSA key with SHA-256
         let msg_4096_sha256 = create_pkcs1v15_message(Sha2Variant::Sha256, 512);
-        assert_eq!(msg_4096_sha256.0.len(), 512);
+        assert_eq!(msg_4096_sha256.len(), 512);
 
         // Test for 4096-bit RSA key with SHA-512
         let msg_4096_sha512 = create_pkcs1v15_message(Sha2Variant::Sha512, 512);
-        assert_eq!(msg_4096_sha512.0.len(), 512);
+        assert_eq!(msg_4096_sha512.len(), 512);
     }
 
     #[test]
     fn test_digest_info_structure() {
         // Verify the DigestInfo structure is correctly formatted for SHA-256
-        let result = create_pkcs1v15_message(Sha2Variant::Sha256, 256);
-        let msg = &result.0;
+        let msg = create_pkcs1v15_message(Sha2Variant::Sha256, 256);
 
         // Find the DigestInfo by looking for the SEQUENCE tag after padding
         let mut digest_info_start = 0;
@@ -273,40 +272,43 @@ mod tests {
     }
 
     #[test]
-    fn test_digest_bit_offset() {
+    fn test_digest_position() {
         // Test for 4096-bit RSA key with SHA-256
-        let result = create_pkcs1v15_message(Sha2Variant::Sha256, 512);
+        let msg = create_pkcs1v15_message(Sha2Variant::Sha256, 512);
 
-        // Verify the bit offset by checking that bytes at that position are zeroed
-        let byte_offset = result.1 / 8;
+        // Find the digest position by looking for the OctetString tag (0x04)
+        // followed by length byte (0x20 = 32 for SHA-256) followed by zeros
+        let mut digest_pos = 0;
+        for i in 0..msg.len() - 33 {
+            // Need at least 33 bytes (tag + length + digest)
+            if msg[i] == 0x04 && msg[i + 1] == 0x20 && msg[i + 2] == 0x00 {
+                digest_pos = i + 2; // Position of first digest byte
+                break;
+            }
+        }
 
-        // Check that we have 32 zero bytes (SHA-256 digest size) at the offset
+        assert_ne!(digest_pos, 0, "Digest position not found in message");
+
+        // Check that we have 32 zero bytes (SHA-256 digest size) at the position
         for i in 0..32 {
             assert_eq!(
-                result.0[byte_offset + i],
+                msg[digest_pos + i],
                 0,
                 "Expected zero byte at digest position {}",
-                byte_offset + i
+                digest_pos + i
             );
         }
 
-        // Also verify there's a 0x04 tag (OCTET STRING) right before the digest
+        // Verify the tag and length
         assert_eq!(
-            result.0[byte_offset - 2],
+            msg[digest_pos - 2],
             0x04,
             "Expected OCTET STRING tag before digest"
         );
-
-        // And the length byte should be 32 for SHA-256
         assert_eq!(
-            result.0[byte_offset - 1],
+            msg[digest_pos - 1],
             32,
             "Expected length byte to be 32 for SHA-256"
-        );
-
-        println!(
-            "Digest bit offset for 4096-bit RSA with SHA-256: {}",
-            result.1
         );
     }
 }

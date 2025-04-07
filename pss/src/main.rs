@@ -10,7 +10,7 @@ fn main() -> Result<()> {
     color_eyre::install()?;
 
     // PSS Configuration parameters
-    let key_bits: usize = 2048;
+    let key_bits: usize = 4096;
     const HASH_LEN: usize = 32; // SHA-256
     const SALT_LEN: usize = HASH_LEN;
     let em_bits: usize = key_bits - 1;
@@ -27,7 +27,7 @@ fn main() -> Result<()> {
     println!();
 
     // Example message
-    let message = b"";
+    let message = b"Short";
     println!("Message: \"{}\"", String::from_utf8_lossy(message));
 
     // 1. Calculate message hash
@@ -38,7 +38,7 @@ fn main() -> Result<()> {
 
     // 2. Create salt (normally random, fixed here for demonstration)
     let salt = [42u8; SALT_LEN];
-    println!("Salt: {}", hex::encode(&salt));
+    println!("Salt: {}", hex::encode(salt));
 
     // 3. Encode message with PSS
     let mut encode_hasher = <Sha256 as sha2::Digest>::new();

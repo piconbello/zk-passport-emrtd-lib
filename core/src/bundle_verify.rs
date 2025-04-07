@@ -1,9 +1,5 @@
-use crate::{
-    bundle::{Asn1Signature, Signature, VerificationBundle},
-    pubkeys::Pubkey,
-};
+use crate::{bundle::VerificationBundle, bundle_signature::Signature, pubkeys::Pubkey};
 use color_eyre::eyre::{bail, eyre, Context, Result};
-use der::Encode;
 use openssl::{
     hash::{Hasher, MessageDigest},
     nid::Nid,
@@ -174,11 +170,13 @@ fn verify_signature(
 
     // Convert EC signatures to ASN.1 DER format for OpenSSL verification
     let signature_bytes = match signature {
-        Signature::EC(ec_sig) => {
-            let asn1_sig = Asn1Signature::try_from(ec_sig)?;
-            asn1_sig.to_der()?
+        Signature::Ec(ec_sig) => {
+            ec_sig.uncompressed.clone()
+            // let asn1_sig = Asn1Signature::try_from(ec_sig)?;
+            // asn1_sig.to_der()?
         }
-        Signature::RSA(rsa_sig) => rsa_sig.signature.to_vec(),
+        Signature::RsaPss(rsa_sig) => rsa_sig.signature.to_vec(),
+        Signature::RsaPkcs(rsa_sig) => rsa_sig.signature.to_vec(),
     };
 
     // Verify the signature and convert OpenSSL result into our Result type

@@ -1,5 +1,6 @@
 use crate::{
-    bundle::{Signature, SignatureEC, SignatureRSA, VerificationBundle},
+    bundle::VerificationBundle,
+    bundle_signature::{Signature, SignatureEc, SignatureRsaPkcs},
     dg1::DG1Variant,
     pubkeys::{ClonableBigNum, Pubkey, PubkeyEC, PubkeyRSA},
 };
@@ -231,11 +232,11 @@ fn mock_tail_with_ec_master(
     });
 
     Ok(MockTail {
-        document_signature: Signature::EC(SignatureEC::try_from(&document_signature[..])?),
+        document_signature: Signature::Ec(SignatureEc::try_from(&document_signature[..])?),
         cert_local_pubkey: ds_pubkey,
         cert_local_tbs: tbs_cert_der,
         cert_local_tbs_digest_algo: digest_nid,
-        cert_local_signature: Signature::EC(SignatureEC::try_from(&cert_signature[..])?),
+        cert_local_signature: Signature::Ec(SignatureEc::try_from(&cert_signature[..])?),
         cert_master_pubkey: csca_pubkey,
     })
 }
@@ -320,16 +321,16 @@ fn mock_tail_with_rsa_master(
     });
 
     Ok(MockTail {
-        document_signature: Signature::RSA(SignatureRSA {
+        document_signature: Signature::RsaPkcs(SignatureRsaPkcs {
             signature: document_signature,
-            bitsize: master_key.size() * 8,
+            message_hash_algorithm: digest_nid,
         }),
         cert_local_pubkey: ds_pubkey,
         cert_local_tbs: tbs_cert_der,
         cert_local_tbs_digest_algo: digest_nid,
-        cert_local_signature: Signature::RSA(SignatureRSA {
+        cert_local_signature: Signature::RsaPkcs(SignatureRsaPkcs {
             signature: cert_signature,
-            bitsize: master_key.size() * 8,
+            message_hash_algorithm: digest_nid,
         }),
         cert_master_pubkey: csca_pubkey,
     })
