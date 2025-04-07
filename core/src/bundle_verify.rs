@@ -164,25 +164,64 @@ fn verify_signature(
     public_key: &PKey<Public>,
     digest_algo: &Nid,
 ) -> Result<()> {
-    let md = message_digest(digest_algo)?;
-    let mut verifier = Verifier::new(md, public_key)?;
-    verifier.update(data)?;
-
-    // Convert EC signatures to ASN.1 DER format for OpenSSL verification
-    let signature_bytes = match signature {
+    match signature {
         Signature::Ec(ec_sig) => {
-            ec_sig.uncompressed.clone()
-            // let asn1_sig = Asn1Signature::try_from(ec_sig)?;
-            // asn1_sig.to_der()?
-        }
-        Signature::RsaPss(rsa_sig) => rsa_sig.signature.to_vec(),
-        Signature::RsaPkcs(rsa_sig) => rsa_sig.signature.to_vec(),
-    };
+            // For EC signatures
+            let md = message_digest(digest_algo)?;
+            let mut verifier = Verifier::new(md, public_key)?;
+            verifier.update(data)?;
 
-    // Verify the signature and convert OpenSSL result into our Result type
-    match verifier.verify(&signature_bytes) {
-        Ok(true) => Ok(()),
-        Ok(false) => bail!("Invalid signature"),
-        Err(e) => bail!("Verification error: {}", e),
+            verifier
+                .verify(&ec_sig.uncompressed)?
+                .then_some(())
+                .ok_or_else(|| eyre!("Invalid EC signature"))?;
+        }
+
+        Signature::RsaPss(rsa_pss) => {
+            // For RSA-PSS signatures
+            // Use the hash algorithm from the signature itself
+            let md = message_digest(&rsa_pss.message_hash_algorithm)?;
+
+            // Create a standard Verifier but configure it for PSS
+            let mut verifier = Verifier::new(md, public_key)?;
+
+            // Configure for PSS padding
+            verifier.set_rsa_padding(openssl::rsa::Padding::PKCS1_PSS)?;
+
+            // Set salt length (convert from bits to bytes)
+            let salt_len = rsa_pss.salt_size_bits / 8;
+            verifier.set_rsa_pss_saltlen(openssl::sign::RsaPssSaltlen::custom(salt_len as i32))?;
+
+            // Set MGF1 hash algorithm if different from message digest
+            if rsa_pss.mgf_hash_algorithm != rsa_pss.message_hash_algorithm {
+                let mgf_md = message_digest(&rsa_pss.mgf_hash_algorithm)?;
+                verifier.set_rsa_mgf1_md(mgf_md)?;
+            }
+
+            verifier.update(data)?;
+
+            verifier
+                .verify(&rsa_pss.signature)?
+                .then_some(())
+                .ok_or_else(|| eyre!("Invalid RSA-PSS signature"))?;
+        }
+
+        Signature::RsaPkcs(rsa_pkcs) => {
+            // For PKCS#1 v1.5 RSA signatures
+            let md = message_digest(&rsa_pkcs.message_hash_algorithm)?;
+            let mut verifier = Verifier::new(md, public_key)?;
+
+            // Explicitly set PKCS1 padding (this is default, but being explicit)
+            verifier.set_rsa_padding(openssl::rsa::Padding::PKCS1)?;
+
+            verifier.update(data)?;
+
+            verifier
+                .verify(&rsa_pkcs.signature)?
+                .then_some(())
+                .ok_or_else(|| eyre!("Invalid PKCS#1 v1.5 RSA signature"))?;
+        }
     }
+
+    Ok(())
 }

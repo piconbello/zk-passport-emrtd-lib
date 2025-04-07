@@ -1,6 +1,7 @@
 use base64::prelude::BASE64_STANDARD;
 use base64::Engine;
 use color_eyre::eyre::{Context, Result};
+use emrtd_core::bundle_verify::Verify;
 use emrtd_core::{bundle as core_bundle, dg1::DG1Variant, document_components, smallvec::SmallVec};
 use serde::de::{self, Error as DeError, Visitor};
 use serde::{Deserialize, Deserializer};
@@ -104,6 +105,8 @@ pub fn handle_bundle(masterlist_json_file: &PathBuf, scan_file: &PathBuf) -> Res
         document_components::DocumentComponents::new(&sod, &scan.dg1, scan.dg1_variant)?;
 
     let bundle = core_bundle::VerificationBundle::bundle(&doc_comps, masterlist.pairs.as_slice())?;
+
+    bundle.verify().wrap_err("Failed to verify bundle")?;
 
     println!("{}", serde_json::to_string_pretty(&bundle)?);
     Ok(())
