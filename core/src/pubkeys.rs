@@ -85,6 +85,7 @@ pub struct PubkeyRSA {
     pub exponent: ClonableBigNum,
     #[serde_as(as = "Base64")]
     pub encoded: SmallVec<[u8; 1024]>,
+    pub key_size_bits: usize,
 }
 impl PubkeyRSA {
     fn as_hex(&self) -> String {
@@ -145,6 +146,7 @@ impl TryFrom<&[u8]> for Pubkey {
                 Ok(Self::RSA(PubkeyRSA {
                     modulus: n.to_owned()?.into(),
                     exponent: e.to_owned()?.into(),
+                    key_size_bits: n.num_bits() as usize,
                     encoded,
                 }))
             }

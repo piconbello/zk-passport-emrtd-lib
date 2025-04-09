@@ -308,6 +308,7 @@ fn mock_tail_with_rsa_master(
         modulus: ClonableBigNum::from(master_key.n().to_owned()?),
         exponent: clonable_exp.clone(),
         encoded,
+        key_size_bits: master_key.n().num_bits() as usize,
     });
 
     let encoded: SmallVec<_> = ds_key
@@ -318,6 +319,7 @@ fn mock_tail_with_rsa_master(
         modulus: ClonableBigNum::from(ds_key.n().to_owned()?),
         exponent: clonable_exp,
         encoded,
+        key_size_bits: ds_key.n().num_bits() as usize,
     });
 
     Ok(MockTail {

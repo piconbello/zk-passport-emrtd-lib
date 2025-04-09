@@ -295,6 +295,7 @@ fn mock_tail_rsa(
         modulus: ClonableBigNum::from(csca_key.n().to_owned()?),
         exponent: clonable_exp.clone(),
         encoded,
+        key_size_bits: csca_key.n().num_bits() as usize,
     });
     let encoded: SmallVec<_> = csca_key
         .public_key_to_der()
@@ -304,6 +305,7 @@ fn mock_tail_rsa(
         modulus: ClonableBigNum::from(ds_key.n().to_owned()?),
         exponent: clonable_exp,
         encoded,
+        key_size_bits: ds_key.n().num_bits() as usize,
     });
 
     // Generate key identifier from CSCA public key

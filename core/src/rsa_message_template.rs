@@ -1,7 +1,7 @@
 use std::fmt::Display;
 
 use const_oid::{db::DB, ObjectIdentifier};
-use der::Encode;
+use der::{asn1::Null, Encode};
 use num_bigint::BigUint;
 use serde::Serialize;
 use serde_with::{serde_as, DisplayFromStr, Map};
@@ -46,95 +46,109 @@ impl Sha2Variant {
     }
 }
 
+/// Helper to manually encode an ASN.1 Length
+fn encode_asn1_length(len: usize) -> Vec<u8> {
+    if let Ok(len_u8) = u8::try_from(len) {
+        if len_u8 < 128 {
+            // Short form
+            vec![len_u8]
+        } else {
+            // Long form
+            let len_bytes = len.to_be_bytes();
+            // Find the first non-zero byte
+            let num_non_zero = len_bytes
+                .iter()
+                .position(|&b| b != 0)
+                .unwrap_or(len_bytes.len());
+            let num_len_octets = len_bytes.len() - num_non_zero;
+            let mut result = Vec::with_capacity(1 + num_len_octets);
+            result.push(0x80 | num_len_octets as u8); // Length byte indicator
+            result.extend_from_slice(&len_bytes[num_non_zero..]);
+            result
+        }
+    } else {
+        // Handle very large lengths if necessary, similar to long form
+        panic!("Length too large for simple u8 conversion in this example"); // Or implement full handling
+    }
+}
+
 /// Creates a PKCS#1 v1.5 formatted message for RSA verification
-///
-/// This function creates a properly formatted message according to PKCS#1 v1.5 standard,
-/// with a zeroed digest of the specified hash algorithm. The message is padded to match
-/// the RSA key size.
-///
-/// # Arguments
-/// * `digest_variant` - The SHA2 hash algorithm variant to use
-/// * `key_size_bytes` - The RSA key size in bytes (e.g., 512 for 4096-bit RSA)
-///
-/// # Returns
-/// A struct containing the formatted message and the bit offset where the digest begins
+/// ... (rest of the doc comment) ...
 pub fn create_pkcs1v15_message(digest_variant: Sha2Variant, key_size_bytes: usize) -> Vec<u8> {
     // Create zeroed digest of requested size
     let digest_size = digest_variant.get_size();
     let zeroed_digest = vec![0u8; digest_size];
 
-    // Create the DigestInfo structure using ASN.1 DER encoding
-    let digest_info = {
-        // Get the OID for the hash algorithm
-        let oid = digest_variant.get_oid();
+    // --- Correctly build the DigestInfo structure ---
 
-        // Calculate all lengths in advance for proper ASN.1 DER encoding
-        // NULL is always 2 bytes (0x05 tag + 0x00 length)
-        let null_len = 2;
+    // 1. Encode the OID correctly (Tag + Length + Value)
+    let oid = digest_variant.get_oid();
+    let encoded_oid = oid.to_der().expect("Failed to encode OID"); // Use der::Encode::to_vec
 
-        // AlgorithmIdentifier = SEQUENCE(OID + NULL)
-        let oid_encoded_len: u32 = oid
-            .encoded_len()
-            .expect("OID encoding should never fail")
-            .into();
-        let alg_id_content_len = oid_encoded_len as usize + null_len;
-        let alg_id_len = 1 + 1 + alg_id_content_len; // 0x30 tag + length byte + content
+    // 2. Encode the NULL parameters correctly (Tag + Length)
+    let encoded_null = Null.to_der().expect("Failed to encode NULL"); // Produces [0x05, 0x00]
 
-        // OctetString = 0x04 tag + length byte + digest value
-        let octet_string_len = 1 + 1 + digest_size;
+    // 3. Build the AlgorithmIdentifier SEQUENCE content
+    let alg_id_content = [encoded_oid, encoded_null].concat();
 
-        // DigestInfo = SEQUENCE(AlgorithmIdentifier + OctetString)
-        let digest_info_content_len = alg_id_len + octet_string_len;
-        let digest_info_len = 1 + 1 + digest_info_content_len; // 0x30 tag + length byte + content
+    // 4. Build the AlgorithmIdentifier SEQUENCE (Tag + Length + Content)
+    let mut encoded_alg_id = Vec::new();
+    encoded_alg_id.push(0x30); // SEQUENCE Tag
+    encoded_alg_id.extend(encode_asn1_length(alg_id_content.len())); // Correct length encoding
+    encoded_alg_id.extend_from_slice(&alg_id_content);
 
-        // Allocate the exact size needed for DigestInfo
-        let mut result = Vec::with_capacity(digest_info_len);
+    // 5. Build the Digest OCTET STRING (Tag + Length + Content)
+    let mut encoded_digest = Vec::new();
+    encoded_digest.push(0x04); // OCTET STRING Tag
+    encoded_digest.extend(encode_asn1_length(zeroed_digest.len())); // Correct length encoding
+    encoded_digest.extend_from_slice(&zeroed_digest);
 
-        // SEQUENCE for DigestInfo (0x30 = ASN.1 SEQUENCE tag)
-        result.push(0x30);
-        result.push(digest_info_content_len as u8);
+    // 6. Build the DigestInfo SEQUENCE content
+    let digest_info_content = [encoded_alg_id, encoded_digest].concat();
 
-        // SEQUENCE for AlgorithmIdentifier
-        result.push(0x30);
-        result.push(alg_id_content_len as u8);
+    // 7. Build the final DigestInfo SEQUENCE (Tag + Length + Content)
+    let mut digest_info = Vec::new(); // This is our final 'T'
+    digest_info.push(0x30); // SEQUENCE Tag
+    digest_info.extend(encode_asn1_length(digest_info_content.len())); // Correct length encoding
+    digest_info.extend_from_slice(&digest_info_content);
 
-        // OID for algorithm
-        result.extend_from_slice(oid.as_bytes());
+    // --- Correct length calculation for DigestInfo ---
+    // For SHA-256:
+    // encoded_oid = 11 bytes (06 09 ...)
+    // encoded_null = 2 bytes (05 00)
+    // alg_id_content = 13 bytes
+    // encoded_alg_id = 1 (tag) + 1 (len 0x0D) + 13 = 15 bytes (30 0D ...)
+    // encoded_digest = 1 (tag) + 1 (len 0x20) + 32 = 34 bytes (04 20 ...)
+    // digest_info_content = 15 + 34 = 49 bytes
+    // digest_info = 1 (tag) + 1 (len 0x31) + 49 = 51 bytes (30 31 ...)
+    // This matches the expected length.
 
-        // NULL for parameters (0x05 = ASN.1 NULL tag)
-        result.push(0x05);
-        result.push(0x00);
+    // --- Apply PKCS#1 v1.5 padding ---
+    let t_len = digest_info.len(); // Use the length of the correctly encoded DigestInfo
+    if key_size_bytes < t_len + 11 {
+        // 3 bytes for 00 01 ... 00 + minimum 8 bytes FF
+        panic!(
+            "Key size {} bytes is too small for DigestInfo ({} bytes) and PKCS#1 v1.5 padding",
+            key_size_bytes, t_len
+        );
+    }
 
-        // OCTET STRING for digest (0x04 = ASN.1 OCTET STRING tag)
-        result.push(0x04);
-        result.push(digest_size as u8);
+    let padding_len = key_size_bytes - t_len - 3; // 3 bytes for 0x00, 0x01, 0x00 separator
 
-        // The digest starts here - remember this position for calculating offset
-        result.extend_from_slice(&zeroed_digest);
-
-        result
-    };
-
-    // Apply PKCS#1 v1.5 padding
     let mut padded_message = Vec::with_capacity(key_size_bytes);
-    // 0x00 and 0x01 are the PKCS#1 v1.5 block type 1 header
     padded_message.push(0x00); // Leading zero
-    padded_message.push(0x01); // Block type 1 for private key operations
-
-    // Padding string of 0xFF bytes (required for block type 1)
-    let padding_len = key_size_bytes - digest_info.len() - 3; // 3 bytes for 0x00, 0x01, 0x00
-    padded_message.extend(vec![0xFF; padding_len]);
-
-    padded_message.push(0x00); // Separator byte between padding and data
-
-    // Add DigestInfo
-    padded_message.extend_from_slice(&digest_info);
+    padded_message.push(0x01); // Block type 1
+    padded_message.extend(vec![0xFF; padding_len]); // FF padding
+    padded_message.push(0x00); // Separator byte
+    padded_message.extend_from_slice(&digest_info); // Add correctly encoded DigestInfo
 
     // Verify the final message is exactly the right size
     assert_eq!(
         padded_message.len(),
         key_size_bytes,
-        "Incorrect message length"
+        "Internal error: Incorrect final padded message length. Expected {}, got {}",
+        key_size_bytes,
+        padded_message.len()
     );
 
     padded_message
@@ -309,6 +323,74 @@ mod tests {
             msg[digest_pos - 1],
             32,
             "Expected length byte to be 32 for SHA-256"
+        );
+    }
+
+    #[test]
+    fn test_sha256_4096_structure() {
+        // Specifically check the structure for the case that failed before
+        let key_size_bytes = 512;
+        let digest_variant = Sha2Variant::Sha256;
+        let msg = create_pkcs1v15_message(digest_variant, key_size_bytes);
+
+        assert_eq!(msg.len(), key_size_bytes);
+        assert_eq!(msg[0..2], [0x00, 0x01]); // Check header
+
+        // Calculate expected DigestInfo length and padding length
+        // As derived above, DigestInfo for SHA-256 is 51 bytes
+        let t_len = 51;
+        let padding_len = key_size_bytes - t_len - 3; // 512 - 51 - 3 = 458
+        let separator_index = 2 + padding_len; // 2 + 458 = 460
+
+        // Check padding block
+        for i in 2..separator_index {
+            assert_eq!(msg[i], 0xFF, "Padding byte at index {} is not FF", i);
+        }
+
+        // Check separator
+        assert_eq!(
+            msg[separator_index], 0x00,
+            "Separator byte at index {} is not 00",
+            separator_index
+        );
+
+        // Check DigestInfo prefix (first few bytes)
+        // Expected: 30 31 30 0D 06 09 60 86 48 01 65 03 04 02 01 05 00 04 20
+        let expected_prefix: Vec<u8> =
+            hex::decode("3031300d060960864801650304020105000420").unwrap();
+        assert_eq!(
+            msg[separator_index + 1..separator_index + 1 + expected_prefix.len()],
+            expected_prefix,
+            "DigestInfo prefix mismatch"
+        );
+
+        // Check that the rest is zeroed digest
+        let digest_start_index = separator_index + 1 + expected_prefix.len();
+        let digest_size = digest_variant.get_size(); // 32
+        assert_eq!(
+            digest_start_index + digest_size,
+            key_size_bytes,
+            "Digest end index calculation mismatch"
+        );
+        for i in 0..digest_size {
+            assert_eq!(
+                msg[digest_start_index + i],
+                0x00,
+                "Digest byte at index {} is not 00",
+                digest_start_index + i
+            );
+        }
+
+        // Optional: Print the relevant part for manual verification
+        // println!("Separator index: {}", separator_index);
+        // println!("DigestInfo starts at: {}", separator_index + 1);
+        // println!("DigestInfo Hex: {}", hex::encode(&msg[separator_index + 1..]));
+        // Example expected DigestInfo hex for SHA256 with zero hash:
+        // 3031300d0609608648016503040201050004200000000000000000000000000000000000000000000000000000000000000000
+        let expected_digest_info_hex = "3031300d0609608648016503040201050004200000000000000000000000000000000000000000000000000000000000000000";
+        assert_eq!(
+            hex::encode(&msg[separator_index + 1..]),
+            expected_digest_info_hex
         );
     }
 }
